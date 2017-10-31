@@ -1,4 +1,4 @@
-module Helm
+module Helm.Process
     ( processIO
     , processIOParallel
     , processIOBulkParallel

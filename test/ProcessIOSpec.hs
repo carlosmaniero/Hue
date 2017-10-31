@@ -1,6 +1,6 @@
 module ProcessIOSpec where
 
-import Helm
+import Helm.Process
 import Test.Hspec
 
 
