@@ -25,5 +25,7 @@ processIOBulkParallel update model resultMsg operations = do
 
 processIO :: (msg -> model -> model) -> model -> IO msg -> IO model
 processIO update model operation = do
-    msg' <- operation
+    channel <- newEmptyMVar
+    runOperationAsync channel operation
+    msg' <- takeMVar channel
     return $ update msg' model
