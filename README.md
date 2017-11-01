@@ -5,24 +5,32 @@ Helm is a simple architecture elm-based for Haskell programs.
 
 ## Helm's architecture
 
-The application is created with a `model` and start `command` and a `updater`.
-It will return a Loop is that execute concurrently the update
-calls and delegate `commands` to `command processor` to run the
-given `command` parallelly.
+The Helm's architecture consists in three two important things:
 
-All `command` returns a `msg`. This `msg` will be passed as parameter
-to the given `updater`. The `updater` receives the current model
-(aka: application state) and a `msg` and return the new model to be
-used in next iterations.
+- A model that represents the application state
+- A updated that receives messages and update the model
+
+
+A Helm application is created with a `model`, a start `command`
+and a `updater`.
+
+It will return a Loop where the update calls are invoked concurrently
+and all IO operations (`commands`) are delegated to `command processor`
+that runs the given `command` parallelly.
+
+All `command` resultes in a `msg`. Each `msg` is passed as parameter
+to the `updater` that returns the new model and a command to be
+processed.
 
 ### The external world
 
 The central idea of Helm is to work with the external world with some
 configurations and allow developers to focuses in the business logical.
 
-To work with external world is needed some `adapters` (*ie*: The HTTP
-interface). This `adapters` always send a `msg` to the application with
-a context. A `context` is a important part of the external communication
+To work with external world is always needed a `adapters` (*ie*: The HTTP
+interface). This `adapters` send a `msg` to the application with a context.
+
+A `context` is a important part of the external communication
 because most of results of an external call is based in a scope, not in
 the global `model`.
 
