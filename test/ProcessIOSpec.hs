@@ -49,22 +49,65 @@ processIOSpec = do
         describe "When I expect the parallel operation to update the full list of result" $ do
             it "should process all the list of IO operation" $ do
                 channel <- newEmptyMVar
-                forkIO $ processIOBulkParallel (channelBroadcast channel) [theNumber, theAnotherNumber] ProcessedList
+                startProcess $ Process { processType = ProcessBulk [theAnswer, theNumber, theAnotherNumber] ProcessedList
+                                       , processBroadcast = channelBroadcast channel}
                 msg' <- takeMVar channel
-                shouldBeEqualProcessedList [1993, 7] msg'
+                shouldBeEqualProcessedList [1993, 42, 7] msg'
             it "should do nothing given a empty list" $ do
                 channel <- newEmptyMVar
-                forkIO $ processIOBulkParallel (channelBroadcast channel) [] ProcessedList
+                startProcess $ Process { processType = ProcessBulk [] ProcessedList
+                                       , processBroadcast = channelBroadcast channel}
                 msg' <- takeMVar channel
                 shouldBeEqualProcessedList [] msg'
+            describe "Cancelling" $ do
+                it "should cancel the process" $ do
+                    channel <- newEmptyMVar
+                    startCancellableProcess CancellableProcess { cancellableMsg = Canceled
+                                                               , cancellableOperation = cancelImmediately
+                                                               , cancellableProcess = Process { processType = ProcessBulk [theSlowAnswer, theSlowAnswer] ProcessedList
+                                                                                              , processBroadcast = channelBroadcast channel } }
+                    msg' <- takeMVar channel
+                    msg' `shouldBe` (Canceled)
+                    takeMVar channel `shouldThrow` anyException
+                it "shouldn't send the canceled message if the process already completed" $ do
+                    channel <- newEmptyMVar
+                    startCancellableProcess CancellableProcess { cancellableMsg = Canceled
+                                                               , cancellableOperation = theSlowCancel
+                                                               , cancellableProcess = Process { processType = ProcessBulk [theAnswer, theAnswer] ProcessedList
+                                                                                              , processBroadcast = channelBroadcast channel } }
+                    msg' <- takeMVar channel
+                    shouldBeEqualProcessedList [42, 42] msg'
+                    takeMVar channel `shouldThrow` anyException
         describe "When I expect the parallel operation to update each operation" $ do
             it "should process the list and return as soon as the operation is done" $ do
                 channel <- newEmptyMVar
-                forkIO $ processIOParallel (channelBroadcast channel) [theNumber, theAnotherNumber] Completed
+                startProcess $ Process { processType = ProcessMany [theNumber, theAnotherNumber] Completed
+                                       , processBroadcast = channelBroadcast channel}
                 msg1 <- takeMVar channel
                 [Completed 1993, Completed 7] `shouldContain` [msg1]
                 msg2 <- takeMVar channel
                 [ msg | msg <- [Completed 1993, Completed 7], msg /= msg1] `shouldContain` [msg2]
+            describe "Cancelling" $ do
+                it "should cancel the process" $ do
+                    channel <- newEmptyMVar
+                    startCancellableProcess CancellableProcess { cancellableMsg = Canceled
+                                                               , cancellableOperation = cancelImmediately
+                                                               , cancellableProcess = Process { processType = ProcessMany [theSlowAnswer, theSlowAnswer] Completed
+                                                                                              , processBroadcast = channelBroadcast channel } }
+                    msg' <- takeMVar channel
+                    msg' `shouldBe` (Canceled)
+                    takeMVar channel `shouldThrow` anyException
+                it "given two operation one fast and the other slow, only the first is completed" $ do
+                    channel <- newEmptyMVar
+                    startCancellableProcess CancellableProcess { cancellableMsg = Canceled
+                                                               , cancellableOperation = theSlowCancel
+                                                               , cancellableProcess = Process { processType = ProcessMany [theAnswer, theSlowAnswer] Completed
+                                                                                              , processBroadcast = channelBroadcast channel } }
+                    msg' <- takeMVar channel
+                    msg' `shouldBe` (Completed 42)
+                    msg'' <- takeMVar channel
+                    msg'' `shouldBe` (Canceled)
+                    takeMVar channel `shouldThrow` anyException
 
 
 data Msg
@@ -100,7 +143,7 @@ theNumber = do
 
 theSlowAnswer :: IO Int
 theSlowAnswer = do
-    threadDelay 100
+    threadDelay 2000
     return 42
 
 
@@ -121,5 +164,5 @@ neverCancel = do
 
 theSlowCancel :: IO Bool
 theSlowCancel = do
-    threadDelay 100
+    threadDelay 1000
     return True
