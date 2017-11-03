@@ -4,6 +4,7 @@ import Helm.Process
 import Test.Hspec
 import Control.Concurrent
 import Control.Concurrent.MVar
+import Control.Exception.Base
 
 
 processIOSpec :: SpecWith ()
@@ -11,9 +12,38 @@ processIOSpec = do
     describe "Given an IO Operation and an update function" $ do
         it "should call the update with the IO result message" $ do
             channel <- newEmptyMVar
-            forkIO $ processIO (channelBroadcast channel) theAnswer Completed
+            startProcess $ Process { processType = ProcessOnly theAnswer Completed
+                                   , processBroadcast = channelBroadcast channel}
             msg' <- takeMVar channel
             msg' `shouldBe` (Completed 42)
+        describe "Cancelling" $ do
+            it "should cancel the process" $ do
+                channel <- newEmptyMVar
+                startCancellableProcess CancellableProcess { cancellableMsg = Canceled
+                                                           , cancellableOperation = cancelImmediately
+                                                           , cancellableProcess = Process { processType = ProcessOnly theSlowAnswer Completed
+                                                                                          , processBroadcast = channelBroadcast channel } }
+                msg' <- takeMVar channel
+                msg' `shouldBe` (Canceled)
+                takeMVar channel `shouldThrow` anyException
+            it "should execute the process if the cancel function returns false" $ do
+                channel <- newEmptyMVar
+                startCancellableProcess CancellableProcess { cancellableMsg = Canceled
+                                                           , cancellableOperation = neverCancel
+                                                           , cancellableProcess = Process { processType = ProcessOnly theAnswer Completed
+                                                                                          , processBroadcast = channelBroadcast channel } }
+                msg' <- takeMVar channel
+                msg' `shouldBe` (Completed 42)
+                takeMVar channel `shouldThrow` anyException
+            it "shouldn't send the canceled message if the process already completed" $ do
+                channel <- newEmptyMVar
+                startCancellableProcess CancellableProcess { cancellableMsg = Canceled
+                                                           , cancellableOperation = theSlowCancel
+                                                           , cancellableProcess = Process { processType = ProcessOnly theAnswer Completed
+                                                                                          , processBroadcast = channelBroadcast channel } }
+                msg' <- takeMVar channel
+                msg' `shouldBe` (Completed 42)
+                takeMVar channel `shouldThrow` anyException
 
     describe "Given a list of IO Operation and an update function" $ do
         describe "When I expect the parallel operation to update the full list of result" $ do
@@ -40,6 +70,7 @@ processIOSpec = do
 data Msg
   = Completed Int
   | ProcessedList [Int]
+  | Canceled
     deriving (Show, Eq)
 
 
@@ -67,6 +98,28 @@ theNumber = do
     return $ 1993
 
 
+theSlowAnswer :: IO Int
+theSlowAnswer = do
+    threadDelay 100
+    return 42
+
+
 theAnotherNumber :: IO Int
 theAnotherNumber = do
     return $ 7
+
+
+cancelImmediately :: IO Bool
+cancelImmediately = do
+    return True
+
+
+neverCancel :: IO Bool
+neverCancel = do
+    return False
+
+
+theSlowCancel :: IO Bool
+theSlowCancel = do
+    threadDelay 100
+    return True
