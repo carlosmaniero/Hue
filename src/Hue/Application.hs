@@ -1,4 +1,8 @@
 module Hue.Application
+    ( HueApplication(..)
+    , hueStart
+    , CmdType(..)
+    )
 where
 
 
@@ -33,9 +37,16 @@ data HueApplication msg model result1 result2 result3 = HueApplication { appMode
                                                                        , appCmd :: CmdType msg result3
                                                                        }
 
+
+-- | 'CmdType' represent the type of command should be executed in the next loop iteration
+--
+-- * 'Cmd' receives a process to be executed
+-- * 'CmdNone' do nothing
+-- * 'CmdExit' stop the loop
 data CmdType msg result = Cmd (Process msg result) | CmdNone | CmdExit
 
 
+-- | 'hueStart' starts the loop with a given application
 hueStart :: HueApplication msg model result1 result2 result3 -> IO model
 hueStart application = do
     channel <- atomically (newTBQueue 100)
