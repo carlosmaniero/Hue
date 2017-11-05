@@ -6,15 +6,15 @@ with concurrency and parallelism in Haskell. All `IO` operation is
 performed in parallel and the results are concurrently processed using
 the `update` system.
 
-## Helm's architecture
+## Hue's architecture
 
-The Helm's architecture consists in two important things:
+The Hue's architecture consists in two important things:
 
 - A model that represents the application state
 - An updated that receives messages and update the model
 
 
-A Helm application is created with a `model`, a start `command`
+A Hue application is created with a `model`, a start `command`
 and a `updater`.
 
 Each `update` call receive the next `command` (IO operation) and the
@@ -26,7 +26,7 @@ processed.
 
 ### The external world
 
-The central idea of Helm is to work with the external world with some
+The central idea of Hue is to work with the external world with some
 configurations and allow developers to focuses in the business logical.
 
 To work with external world is always needed a `adapters` (*ie*: The HTTP
@@ -36,4 +36,4 @@ A `context` is a important part of the external communication
 because most of results of an external call is based in a scope, not in
 the global `model`.
 
-![Helm Architecture](https://rawcdn.githack.com/carlosmaniero/Helm/master/docs/architeture.svg)
+![Hue Architecture](https://rawcdn.githack.com/carlosmaniero/Hue/master/docs/architeture.svg)
