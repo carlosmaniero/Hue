@@ -48,7 +48,6 @@ data ProcessType msg result
 -- be send when the operation is done.
 data Process msg result =
     Process { processType :: ProcessType msg result
-            , processBroadcast :: msg -> IO ()
             , processCancellable :: Maybe (Cancellable msg result)
             }
 
@@ -79,18 +78,17 @@ processOperationLength process =
 type Task = ThreadId
 
 -- | Given a 'Process' the 'startProcess' will running it and return a 'Task'
-startProcess :: Process msg result -> IO Task
-startProcess process = do
+startProcess :: (msg -> IO ()) -> Process msg result -> IO Task
+startProcess broadcast process = do
     case processCancellable process of
       Just _ ->
-          startProcessWithCancellable process
+          startProcessWithCancellable broadcast process
       Nothing ->
-          startProcessWithoutCancellable process
+          startProcessWithoutCancellable broadcast process
 
 
-startProcessWithoutCancellable :: Process msg result -> IO Task
-startProcessWithoutCancellable process = do
-    let broadcast = processBroadcast process
+startProcessWithoutCancellable :: (msg -> IO ()) -> Process msg result -> IO Task
+startProcessWithoutCancellable broadcast process = do
     case processType process of
       ProcessOnly operation createMsg ->
           startProcessOnly operation createMsg broadcast
@@ -100,19 +98,18 @@ startProcessWithoutCancellable process = do
           startProcessMany operations createMsg broadcast
 
 
-startProcessWithCancellable :: Process msg result -> IO Task
-startProcessWithCancellable process = forkIO $ do
+startProcessWithCancellable :: (msg -> IO ()) -> Process msg result -> IO Task
+startProcessWithCancellable originalBroadcast process = forkIO $ do
     blockedChannel <- newEmptyMVar
 
     let blockedBroadcast = putMVar blockedChannel
-    let originalBroadcast = processBroadcast process
-    let processWithBlockedBroadcast = process { processBroadcast = blockedBroadcast . CancellableProcessMsg}
+    let broadcast = blockedBroadcast . CancellableProcessMsg
     let cancellable = fromJust $ processCancellable process
 
-    processTask <- startProcessWithoutCancellable processWithBlockedBroadcast
+    processTask <- startProcessWithoutCancellable broadcast process
     cancellableTask <- startCancellableOperation (cancellableOperation cancellable) (cancellableMsg cancellable) blockedBroadcast
 
-    manageCancellableTasks (processOperationLength processWithBlockedBroadcast) blockedChannel (cancellableMsg cancellable) originalBroadcast processTask cancellableTask
+    manageCancellableTasks (processOperationLength process) blockedChannel (cancellableMsg cancellable) originalBroadcast processTask cancellableTask
 
 
 startProcessOnly :: IO result -> (result -> msg) -> (msg -> IO ()) -> IO Task
