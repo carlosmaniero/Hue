@@ -18,7 +18,7 @@ processIOSpec = do
                                                  , appCmd = setNameCmd "Hue"
                                                  }
                 name model `shouldBe` "Hue"
-                points model `shouldBe` 1
+                points model `shouldBe` 55
 
 
 data Msg = Sum Int | Minus Int | ChangeName String
@@ -33,13 +33,15 @@ update msg model =
           (model { points = result }, cmd)
           where
               result = num + (points model)
-              cmd = CmdExit
+              cmd = if result == 55
+                       then CmdExit
+                    else CmdNone
       Minus num ->
           (model { points = num - (points model) }, CmdNone)
       ChangeName userName ->
           (model { name = userName }, cmd)
           where cmd = if userName == "Hue"
-                         then sumNum 1
+                         then sumNum 10
                       else CmdNone
 
 
