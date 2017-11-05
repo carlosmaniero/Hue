@@ -3,8 +3,12 @@ module ApplicationSpec where
 
 import Hue.Application
 import Hue.Process
+import Control.Concurrent
+import Control.Concurrent.MVar
 import Test.Hspec
 import Test.QuickCheck
+import Control.Exception
+import Control.Exception.Base
 
 
 processIOSpec :: SpecWith ()
@@ -20,6 +24,29 @@ processIOSpec = do
                 name model `shouldBe` "Hue"
                 points model `shouldBe` 55
 
+            it "should never die if the CmdExit is not returned" $ do
+                channel <- newEmptyMVar
+
+                tid <- forkIO $ (
+                            do
+                                result <- try (
+                                                hueStart HueApplication { appModel = model
+                                                                        , appUpdater = update
+                                                                        , appCmd = CmdNone
+                                                                        }
+                                               ) :: IO (Either BlockedIndefinitelyOnSTM Model)
+
+                                case result of
+                                    Left ex  ->
+                                        putMVar channel True
+                                    Right val ->
+                                        putMVar channel True
+                         )
+
+                threadDelay 500000
+                killThread tid
+                isEmpty <- isEmptyMVar channel
+                isEmpty `shouldBe` True
 
 data Msg = Sum Int | Minus Int | ChangeName String
 
