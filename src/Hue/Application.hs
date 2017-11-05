@@ -39,15 +39,12 @@ data CmdType msg result = Cmd (Process msg result) | CmdNone | CmdExit
 hueStart :: HueApplication msg model result1 result2 result3 -> IO model
 hueStart application = do
     channel <- atomically (newTBQueue 100)
-    let broadcastWritter = writeTBQueue channel
-    let broadcastReader = readTBQueue channel
-
     startApplication channel application
 
 
-broadcast :: (msg -> STM ()) -> msg -> IO()
-broadcast writter msg = do
-    atomically $ writter msg
+broadcastWritter :: TBQueue msg -> msg -> IO()
+broadcastWritter channel msg = do
+    atomically $ writeTBQueue channel msg
     return ()
 
 
@@ -56,9 +53,8 @@ startApplication channel application =
     case appCmd application of
       Cmd cmd ->
           (do
-              let broadcastWritter = writeTBQueue channel
               let broadcastReader = readTBQueue channel
-              startProcess (broadcast broadcastWritter) cmd
+              startProcess (broadcastWritter channel) cmd
               msg <- atomically broadcastReader
               let (nextModel, nextCmd) = (appUpdater application) msg (appModel application)
               let nextApplication = HueApplication { appModel = nextModel
@@ -69,7 +65,6 @@ startApplication channel application =
           )
       CmdNone ->
           (do
-            let broadcastWritter = writeTBQueue channel
             let broadcastReader = readTBQueue channel
             msg <- atomically broadcastReader
             let (nextModel, nextCmd) = (appUpdater application) msg (appModel application)
