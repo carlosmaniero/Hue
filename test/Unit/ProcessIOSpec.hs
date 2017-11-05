@@ -16,8 +16,8 @@ processIOSpec = do
                                    , processBroadcast = channelBroadcast channel}
             msg' <- takeMVar channel
             msg' `shouldBe` (Completed 42)
-        describe "Cancelling" $ do
-            it "should cancel the process" $ do
+        describe "Cancelling the process" $ do
+            it "should cancel the process given an cancel function" $ do
                 channel <- newEmptyMVar
                 startCancellableProcess CancellableProcess { cancellableMsg = Canceled
                                                            , cancellableOperation = cancelImmediately
@@ -59,8 +59,8 @@ processIOSpec = do
                                        , processBroadcast = channelBroadcast channel}
                 msg' <- takeMVar channel
                 shouldBeEqualProcessedList [] msg'
-            describe "Cancelling" $ do
-                it "should cancel the process" $ do
+            describe "Cancelling the process" $ do
+                it "should cancel the process given a cancellable function" $ do
                     channel <- newEmptyMVar
                     startCancellableProcess CancellableProcess { cancellableMsg = Canceled
                                                                , cancellableOperation = cancelImmediately
@@ -87,8 +87,8 @@ processIOSpec = do
                 [Completed 1993, Completed 7] `shouldContain` [msg1]
                 msg2 <- takeMVar channel
                 [ msg | msg <- [Completed 1993, Completed 7], msg /= msg1] `shouldContain` [msg2]
-            describe "Cancelling" $ do
-                it "should cancel the process" $ do
+            describe "Cancelling a process" $ do
+                it "should cancel the process given a cancellable function" $ do
                     channel <- newEmptyMVar
                     startCancellableProcess CancellableProcess { cancellableMsg = Canceled
                                                                , cancellableOperation = cancelImmediately
