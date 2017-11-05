@@ -13,34 +13,41 @@ processIOSpec = do
         it "should call the update with the IO result message" $ do
             channel <- newEmptyMVar
             startProcess $ Process { processType = ProcessOnly theAnswer Completed
-                                   , processBroadcast = channelBroadcast channel}
+                                   , processBroadcast = channelBroadcast channel
+                                   , processCancellable = Nothing }
             msg' <- takeMVar channel
             msg' `shouldBe` (Completed 42)
         describe "Cancelling the process" $ do
             it "should cancel the process given an cancel function" $ do
                 channel <- newEmptyMVar
-                startCancellableProcess CancellableProcess { cancellableMsg = Canceled
-                                                           , cancellableOperation = cancelImmediately
-                                                           , cancellableProcess = Process { processType = ProcessOnly theSlowAnswer Completed
-                                                                                          , processBroadcast = channelBroadcast channel } }
+                startProcess $ Process { processType = ProcessOnly theSlowAnswer Completed
+                                       , processBroadcast = channelBroadcast channel
+                                       , processCancellable =
+                                            Just Cancellable { cancellableMsg = Canceled
+                                                             , cancellableOperation = cancelImmediately }
+                                       }
                 msg' <- takeMVar channel
                 msg' `shouldBe` (Canceled)
                 takeMVar channel `shouldThrow` anyException
             it "should execute the process if the cancel function returns false" $ do
                 channel <- newEmptyMVar
-                startCancellableProcess CancellableProcess { cancellableMsg = Canceled
-                                                           , cancellableOperation = neverCancel
-                                                           , cancellableProcess = Process { processType = ProcessOnly theAnswer Completed
-                                                                                          , processBroadcast = channelBroadcast channel } }
+                startProcess $ Process { processType = ProcessOnly theSlowAnswer Completed
+                                       , processBroadcast = channelBroadcast channel
+                                       , processCancellable =
+                                            Just Cancellable { cancellableMsg = Canceled
+                                                             , cancellableOperation = neverCancel }
+                                       }
                 msg' <- takeMVar channel
                 msg' `shouldBe` (Completed 42)
                 takeMVar channel `shouldThrow` anyException
             it "shouldn't send the canceled message if the process already completed" $ do
                 channel <- newEmptyMVar
-                startCancellableProcess CancellableProcess { cancellableMsg = Canceled
-                                                           , cancellableOperation = theSlowCancel
-                                                           , cancellableProcess = Process { processType = ProcessOnly theAnswer Completed
-                                                                                          , processBroadcast = channelBroadcast channel } }
+                startProcess $ Process { processType = ProcessOnly theAnswer Completed
+                                       , processBroadcast = channelBroadcast channel
+                                       , processCancellable =
+                                            Just Cancellable { cancellableMsg = Canceled
+                                                             , cancellableOperation = theSlowCancel }
+                                       }
                 msg' <- takeMVar channel
                 msg' `shouldBe` (Completed 42)
                 takeMVar channel `shouldThrow` anyException
@@ -50,31 +57,37 @@ processIOSpec = do
             it "should process all the list of IO operation" $ do
                 channel <- newEmptyMVar
                 startProcess $ Process { processType = ProcessBulk [theAnswer, theNumber, theAnotherNumber] ProcessedList
-                                       , processBroadcast = channelBroadcast channel}
+                                       , processBroadcast = channelBroadcast channel
+                                       , processCancellable = Nothing }
                 msg' <- takeMVar channel
                 shouldBeEqualProcessedList [1993, 42, 7] msg'
             it "should do nothing given a empty list" $ do
                 channel <- newEmptyMVar
                 startProcess $ Process { processType = ProcessBulk [] ProcessedList
-                                       , processBroadcast = channelBroadcast channel}
+                                       , processBroadcast = channelBroadcast channel
+                                       , processCancellable = Nothing }
                 msg' <- takeMVar channel
                 shouldBeEqualProcessedList [] msg'
             describe "Cancelling the process" $ do
                 it "should cancel the process given a cancellable function" $ do
                     channel <- newEmptyMVar
-                    startCancellableProcess CancellableProcess { cancellableMsg = Canceled
-                                                               , cancellableOperation = cancelImmediately
-                                                               , cancellableProcess = Process { processType = ProcessBulk [theSlowAnswer, theSlowAnswer] ProcessedList
-                                                                                              , processBroadcast = channelBroadcast channel } }
+                    startProcess $ Process { processType = ProcessBulk [theSlowAnswer, theSlowAnswer] ProcessedList
+                                           , processBroadcast = channelBroadcast channel
+                                           , processCancellable =
+                                                Just Cancellable { cancellableMsg = Canceled
+                                                                 , cancellableOperation = cancelImmediately }
+                                           }
                     msg' <- takeMVar channel
                     msg' `shouldBe` (Canceled)
                     takeMVar channel `shouldThrow` anyException
                 it "shouldn't send the canceled message if the process already completed" $ do
                     channel <- newEmptyMVar
-                    startCancellableProcess CancellableProcess { cancellableMsg = Canceled
-                                                               , cancellableOperation = theSlowCancel
-                                                               , cancellableProcess = Process { processType = ProcessBulk [theAnswer, theAnswer] ProcessedList
-                                                                                              , processBroadcast = channelBroadcast channel } }
+                    startProcess $ Process { processType = ProcessBulk [theAnswer, theAnswer] ProcessedList
+                                           , processBroadcast = channelBroadcast channel
+                                           , processCancellable =
+                                                Just Cancellable { cancellableMsg = Canceled
+                                                                 , cancellableOperation = theSlowCancel }
+                                           }
                     msg' <- takeMVar channel
                     shouldBeEqualProcessedList [42, 42] msg'
                     takeMVar channel `shouldThrow` anyException
@@ -82,7 +95,8 @@ processIOSpec = do
             it "should process the list and return as soon as the operation is done" $ do
                 channel <- newEmptyMVar
                 startProcess $ Process { processType = ProcessMany [theNumber, theAnotherNumber] Completed
-                                       , processBroadcast = channelBroadcast channel}
+                                       , processBroadcast = channelBroadcast channel
+                                       , processCancellable = Nothing }
                 msg1 <- takeMVar channel
                 [Completed 1993, Completed 7] `shouldContain` [msg1]
                 msg2 <- takeMVar channel
@@ -90,19 +104,23 @@ processIOSpec = do
             describe "Cancelling a process" $ do
                 it "should cancel the process given a cancellable function" $ do
                     channel <- newEmptyMVar
-                    startCancellableProcess CancellableProcess { cancellableMsg = Canceled
-                                                               , cancellableOperation = cancelImmediately
-                                                               , cancellableProcess = Process { processType = ProcessMany [theSlowAnswer, theSlowAnswer] Completed
-                                                                                              , processBroadcast = channelBroadcast channel } }
+                    startProcess $ Process { processType = ProcessMany [theSlowAnswer, theSlowAnswer] Completed
+                                           , processBroadcast = channelBroadcast channel
+                                           , processCancellable =
+                                                Just Cancellable { cancellableMsg = Canceled
+                                                                 , cancellableOperation = cancelImmediately }
+                                           }
                     msg' <- takeMVar channel
                     msg' `shouldBe` (Canceled)
                     takeMVar channel `shouldThrow` anyException
                 it "given two operation one fast and the other slow, only the first is completed" $ do
                     channel <- newEmptyMVar
-                    startCancellableProcess CancellableProcess { cancellableMsg = Canceled
-                                                               , cancellableOperation = theSlowCancel
-                                                               , cancellableProcess = Process { processType = ProcessMany [theAnswer, theSlowAnswer] Completed
-                                                                                              , processBroadcast = channelBroadcast channel } }
+                    startProcess $ Process { processType = ProcessMany [theAnswer, theSlowAnswer] Completed
+                                           , processBroadcast = channelBroadcast channel
+                                           , processCancellable =
+                                                Just Cancellable { cancellableMsg = Canceled
+                                                                 , cancellableOperation = theSlowCancel }
+                                           }
                     msg' <- takeMVar channel
                     msg' `shouldBe` (Completed 42)
                     msg'' <- takeMVar channel

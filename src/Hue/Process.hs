@@ -1,13 +1,13 @@
 module Hue.Process
     ( ProcessType(..)
     , Process(..)
-    , CancellableProcess(..)
+    , Cancellable(..)
     , Task
     , startProcess
-    , startCancellableProcess
     )
 where
 
+import Data.Maybe
 import Control.Monad
 import Control.Concurrent
 import Control.Concurrent.MVar
@@ -33,14 +33,31 @@ data ProcessType msg result
     | ProcessBulk [IO result] ([result] -> msg)
     | ProcessMany [IO result] (result -> msg)
 
-
 -- | 'Process' is an abstract representation of a process. It contains the
 -- type of the process and the broadcast where the result message will
+--
+-- The 'processCancellable' is a 'Cancellable' can be splited in two important things:
+--
+-- * 'cancellableOperation' is an 'IO' operation that returns a 'Bool'. If it
+-- returns 'True'. The 'cancellableProcess' is killed.
+--
+-- * 'cancellableMsg' the message sent when the process is cancelled
+--
+-- If the process is completed before the cancellable operation. It does not send
+-- the cancellable msg.
 -- be send when the operation is done.
 data Process msg result =
     Process { processType :: ProcessType msg result
             , processBroadcast :: msg -> IO ()
+            , processCancellable :: Maybe (Cancellable msg result)
             }
+
+
+-- | An IO operation that can cancel a process (aka kill it)
+data Cancellable msg result =
+    Cancellable { cancellableOperation :: IO Bool
+                , cancellableMsg :: msg
+}
 
 processOperationLength :: Process msg result -> Int
 processOperationLength process =
@@ -55,12 +72,24 @@ processOperationLength process =
 -- -----------------------------------------------------------------------------
 -- Running Process
 
+
+
+
 -- | The task contains information about the process execution like the
 type Task = ThreadId
 
 -- | Given a 'Process' the 'startProcess' will running it and return a 'Task'
 startProcess :: Process msg result -> IO Task
 startProcess process = do
+    case processCancellable process of
+      Just _ ->
+          startProcessWithCancellable process
+      Nothing ->
+          startProcessWithoutCancellable process
+
+
+startProcessWithoutCancellable :: Process msg result -> IO Task
+startProcessWithoutCancellable process = do
     let broadcast = processBroadcast process
     case processType process of
       ProcessOnly operation createMsg ->
@@ -69,6 +98,21 @@ startProcess process = do
           startProcessBulk operations createMsg broadcast
       ProcessMany operations createMsg ->
           startProcessMany operations createMsg broadcast
+
+
+startProcessWithCancellable :: Process msg result -> IO Task
+startProcessWithCancellable process = forkIO $ do
+    blockedChannel <- newEmptyMVar
+
+    let blockedBroadcast = putMVar blockedChannel
+    let originalBroadcast = processBroadcast process
+    let processWithBlockedBroadcast = process { processBroadcast = blockedBroadcast . CancellableProcessMsg}
+    let cancellable = fromJust $ processCancellable process
+
+    processTask <- startProcessWithoutCancellable processWithBlockedBroadcast
+    cancellableTask <- startCancellableOperation (cancellableOperation cancellable) (cancellableMsg cancellable) blockedBroadcast
+
+    manageCancellableTasks (processOperationLength processWithBlockedBroadcast) blockedChannel (cancellableMsg cancellable) originalBroadcast processTask cancellableTask
 
 
 startProcessOnly :: IO result -> (result -> msg) -> (msg -> IO ()) -> IO Task
@@ -96,47 +140,7 @@ runOperationAsync operation broadcast = forkIO $ do
     result <- operation
     broadcast result
 
-
-
--- -----------------------------------------------------------------------------
--- Running Cancellable Process
-
-
--- | The cancellable process representation where:
---
--- * 'cancellableProcess' represents a 'Process' that can be cancelled
---
--- * 'cancellableOperation' is an 'IO' operation that returns a 'Bool'. If it
--- returns 'True'. The 'cancellableProcess' is killed.
---
--- * 'cancellableMsg' the message sent when the process is cancelled
---
--- If the process is completed before the cancellable operation. It does not send
--- the cancellable msg.
-data CancellableProcess msg result =
-    CancellableProcess { cancellableProcess :: Process msg result
-                       , cancellableOperation :: IO Bool
-                       , cancellableMsg :: msg
-                       }
-
-
 data CancellableMsgType msg = CancellableMsg | CancellableProcessMsg msg
-
-
--- | Start a process that can be canceled by a given 'cancellableOperation' function
-startCancellableProcess :: CancellableProcess msg result -> IO Task
-startCancellableProcess cancellable = forkIO $ do
-    blockedChannel <- newEmptyMVar
-
-    let blockedBroadcast = putMVar blockedChannel
-    let process = cancellableProcess cancellable
-    let originalBroadcast = processBroadcast process
-    let processWithBlockedBroadcast = process { processBroadcast = blockedBroadcast . CancellableProcessMsg}
-
-    processTask <- startProcess processWithBlockedBroadcast
-    cancellableTask <- startCancellableOperation (cancellableOperation cancellable) (cancellableMsg cancellable) blockedBroadcast
-
-    manageCancellableTasks (processOperationLength processWithBlockedBroadcast) blockedChannel (cancellableMsg cancellable) originalBroadcast processTask cancellableTask
 
 
 manageCancellableTasks :: Int -> MVar (CancellableMsgType msg) -> msg -> (msg -> IO()) -> Task -> Task -> IO ()
