@@ -1,4 +1,4 @@
-module Helm.Process
+module Hue.Process
     ( ProcessType(..)
     , Process(..)
     , CancellableProcess(..)

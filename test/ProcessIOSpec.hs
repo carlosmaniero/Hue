@@ -1,6 +1,6 @@
 module ProcessIOSpec where
 
-import Helm.Process
+import Hue.Process
 import Test.Hspec
 import Control.Concurrent
 import Control.Concurrent.MVar

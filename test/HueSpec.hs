@@ -5,4 +5,4 @@ import Control.Exception (evaluate)
 
 main :: IO ()
 main = hspec $ do
-    describe "Helm.Process" processIOSpec
+    describe "Hue.Process" processIOSpec

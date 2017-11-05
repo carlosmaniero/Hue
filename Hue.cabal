@@ -1,13 +1,13 @@
-name:                Helm
+name:                Hue
 version:             0.1.0.0
 -- synopsis:
 -- description:
-homepage:            https://github.com/carlosmaniero/Helm#readme
+homepage:            https://github.com/carlosmaniero/Hue#readme
 license:             BSD3
 license-file:        LICENSE
 author:              Carlos Maniero
 maintainer:          carlosmaniero@gmail.com
-description:         Helm is a simple architecture elm-based for Haskell programs.
+description:         Hue is a simple architecture elm-based for Haskell programs.
 synopsis:            A Haskell architecte elm-based
 category:            Control
 build-type:          Simple
@@ -16,31 +16,31 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Helm.Process
+  exposed-modules:     Hue.Process
   build-depends:       base >= 4.7 && < 5
                      , deepseq >= 1.3.0.0
   default-language:    Haskell2010
 
-executable Helm-exe
+executable Hue-exe
   hs-source-dirs:      app
   main-is:             Main.hs
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   build-depends:       base
-                     , Helm
+                     , Hue
   default-language:    Haskell2010
 
-test-suite Helm-test
+test-suite Hue-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
-  main-is:             HelmSpec.hs
+  main-is:             HueSpec.hs
   build-depends:       base
                      , hspec
                      , QuickCheck
-                     , Helm
+                     , Hue
   other-modules:       ProcessIOSpec
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
 
 source-repository head
   type:     git
-  location: https://github.com/carlosmaniero/Helm
+  location: https://github.com/carlosmaniero/Hue
