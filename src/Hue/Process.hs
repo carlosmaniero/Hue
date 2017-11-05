@@ -3,6 +3,7 @@ module Hue.Process
     , Process(..)
     , Cancellable(..)
     , Task
+    , processOperationLength
     , startProcess
     )
 where
