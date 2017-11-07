@@ -57,11 +57,11 @@ data Model = Model { name :: String
 data Context = RootContext
 
 
-update :: Msg -> Model -> (Model, CmdType Msg)
-update msg model =
+update :: Msg -> Model -> Context -> (Model, Context, CmdType Msg)
+update msg model context =
     case msg of
         Sum num ->
-            (model { points = result }, cmd)
+            (model { points = result }, context, cmd)
             where
                 result = num + (points model)
                 cmd =
@@ -69,9 +69,9 @@ update msg model =
                         then CmdExit
                     else CmdNone
         Minus num ->
-            (model { points = num - (points model) }, CmdNone)
+            (model { points = num - (points model) }, context, CmdNone)
         ChangeName userName ->
-            (model { name = userName }, cmd)
+            (model { name = userName }, context, cmd)
             where cmd =
                         if userName == "Hue"
                            then sumNum 10

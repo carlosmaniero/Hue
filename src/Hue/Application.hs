@@ -34,7 +34,7 @@ import Control.Concurrent.STM.TBQueue
 -- The model is the state of your application. Normally, the model is a record.
 data HueApplication msg model context result1 result2 result3 =
     HueApplication { appModel :: model
-                   , appUpdater :: msg -> model -> (model, CmdType msg)
+                   , appUpdater :: msg -> model -> context -> (model, context, CmdType msg)
                    , appCmd :: CmdType msg
                    , appContext :: context
                    }
@@ -65,11 +65,11 @@ getNextApplicationIteration :: TBQueue msg -> (HueApplication msg model context 
 getNextApplicationIteration channel application = do
     let broadcastReader = readTBQueue channel
     msg <- atomically broadcastReader
-    let (nextModel, nextCmd) = (appUpdater application) msg (appModel application)
+    let (nextModel, nextContext, nextCmd) = (appUpdater application) msg (appModel application) (appContext application)
     let nextApplication = HueApplication { appModel = nextModel
                                          , appUpdater = (appUpdater application)
                                          , appCmd = nextCmd
-                                         , appContext = (appContext application)
+                                         , appContext = nextContext
                                          }
     applicationLoop channel nextApplication
 
