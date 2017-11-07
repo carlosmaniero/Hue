@@ -34,8 +34,8 @@ import Control.Concurrent.STM.TBQueue
 -- The model is the state of your application. Normally, the model is a record.
 data HueApplication msg model context result1 result2 result3 =
     HueApplication { appModel :: model
-                   , appUpdater :: msg -> model -> context -> (model, context, CmdType msg)
-                   , appCmd :: CmdType msg
+                   , appUpdater :: context -> msg -> model -> (context, model, CmdType context msg)
+                   , appCmd :: CmdType context msg
                    , appContext :: context
                    }
 
@@ -45,7 +45,7 @@ data HueApplication msg model context result1 result2 result3 =
 -- * 'Cmd' receives a process to be executed
 -- * 'CmdNone' do nothing
 -- * 'CmdExit' stop the loop
-data CmdType msg = Cmd ((msg -> IO ()) -> IO Task) | CmdNone | CmdExit
+data CmdType context msg = Cmd context ((msg -> IO ()) -> IO Task) | CmdNone | CmdExit
 
 
 -- | 'hueStart' starts the loop with a given application
@@ -55,19 +55,19 @@ hueStart application = do
     applicationLoop channel application
 
 
-broadcastWritter :: TBQueue msg -> msg -> IO()
-broadcastWritter channel msg = do
-    atomically $ writeTBQueue channel msg
+broadcastWritter :: TBQueue (context, msg) -> context -> msg -> IO()
+broadcastWritter channel context msg = do
+    atomically $ writeTBQueue channel (context, msg)
     return ()
 
 
-getNextApplicationIteration :: TBQueue msg -> (HueApplication msg model context result1 result2 result3) -> IO model
+getNextApplicationIteration :: TBQueue (context, msg) -> (HueApplication msg model context result1 result2 result3) -> IO model
 getNextApplicationIteration channel application = do
     let broadcastReader = readTBQueue channel
-    msg <- atomically broadcastReader
-    let (nextModel, nextContext, nextCmd) = (appUpdater application) msg (appModel application) (appContext application)
+    (context, msg) <- atomically broadcastReader
+    let (nextContext, nextModel, nextCmd) = (appUpdater application) context msg (appModel application)
     let nextApplication = HueApplication { appModel = nextModel
-                                         , appUpdater = (appUpdater application)
+                                         , appUpdater = appUpdater application
                                          , appCmd = nextCmd
                                          , appContext = nextContext
                                          }
@@ -75,12 +75,12 @@ getNextApplicationIteration channel application = do
 
 
 
-applicationLoop :: TBQueue msg -> (HueApplication msg model context result1 result2 result3) -> IO model
+applicationLoop :: TBQueue (context, msg) -> (HueApplication msg model context result1 result2 result3) -> IO model
 applicationLoop channel application =
     case appCmd application of
-      Cmd cmd ->
+      Cmd context cmd ->
         (do
-            cmd (broadcastWritter channel)
+            cmd (broadcastWritter channel context)
             getNextApplicationIteration channel application
         )
       CmdNone ->

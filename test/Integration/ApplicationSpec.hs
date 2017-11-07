@@ -18,7 +18,7 @@ processIOSpec = do
             it "should update the model with the new name and the total of points" $ do
                 model <- hueStart HueApplication { appModel = model
                                                  , appUpdater = update
-                                                 , appCmd = setNameCmd "Hue"
+                                                 , appCmd = setNameCmd RootContext "Hue"
                                                  , appContext = RootContext
                                                  }
                 name model `shouldBe` "Hue"
@@ -57,11 +57,11 @@ data Model = Model { name :: String
 data Context = RootContext
 
 
-update :: Msg -> Model -> Context -> (Model, Context, CmdType Msg)
-update msg model context =
+update :: Context -> Msg -> Model -> (Context, Model, CmdType Context Msg)
+update context msg model =
     case msg of
         Sum num ->
-            (model { points = result }, context, cmd)
+            (context, model { points = result }, cmd)
             where
                 result = num + (points model)
                 cmd =
@@ -69,25 +69,25 @@ update msg model context =
                         then CmdExit
                     else CmdNone
         Minus num ->
-            (model { points = num - (points model) }, context, CmdNone)
+            (context, model { points = num - (points model) }, CmdNone)
         ChangeName userName ->
-            (model { name = userName }, context, cmd)
+            (context, model { name = userName }, cmd)
             where cmd =
                         if userName == "Hue"
-                           then sumNum 10
+                           then sumNum context 10
                         else CmdNone
 
 
-setNameCmd :: String -> CmdType Msg
-setNameCmd theName =
-    Cmd $ startProcess Process { processType = ProcessOnly (do return theName) ChangeName
+setNameCmd :: Context -> String -> CmdType Context Msg
+setNameCmd context theName =
+    Cmd context $ startProcess Process { processType = ProcessOnly (do return theName) ChangeName
                                  , processCancellable = Nothing }
 
 sumIO :: Int -> IO Int
 sumIO num = do
     return num
 
-sumNum :: Int -> CmdType Msg
-sumNum total =
-    Cmd $ startProcess Process { processType = ProcessMany (map sumIO $ [0..total]) Sum
+sumNum :: Context -> Int -> CmdType Context Msg
+sumNum context total =
+    Cmd context $ startProcess Process { processType = ProcessMany (map sumIO $ [0..total]) Sum
                                , processCancellable = Nothing }
