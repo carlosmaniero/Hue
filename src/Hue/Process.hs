@@ -79,8 +79,8 @@ processOperationLength process =
 type Task = ThreadId
 
 -- | Given a 'Process' the 'startProcess' will running it and return a 'Task'
-startProcess :: (msg -> IO ()) -> Process msg result -> IO Task
-startProcess broadcast process = do
+startProcess :: Process msg result -> (msg -> IO ()) -> IO Task
+startProcess process broadcast = do
     case processCancellable process of
       Just _ ->
           startProcessWithCancellable broadcast process

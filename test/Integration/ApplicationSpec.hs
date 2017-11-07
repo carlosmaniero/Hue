@@ -1,4 +1,3 @@
-{-# LANGUAGE PartialTypeSignatures #-}
 module ApplicationSpec where
 
 import Hue.Application
@@ -20,6 +19,7 @@ processIOSpec = do
                 model <- hueStart HueApplication { appModel = model
                                                  , appUpdater = update
                                                  , appCmd = setNameCmd "Hue"
+                                                 , appContext = RootContext
                                                  }
                 name model `shouldBe` "Hue"
                 points model `shouldBe` 55
@@ -33,6 +33,7 @@ processIOSpec = do
                                                 hueStart HueApplication { appModel = model
                                                                         , appUpdater = update
                                                                         , appCmd = CmdNone
+                                                                        , appContext = RootContext
                                                                         }
                                                ) :: IO (Either BlockedIndefinitelyOnSTM Model)
 
@@ -53,35 +54,40 @@ data Msg = Sum Int | Minus Int | ChangeName String
 data Model = Model { name :: String
                    , points :: Int }
 
-update :: Msg -> Model -> (Model, CmdType Msg _)
+data Context = RootContext
+
+
+update :: Msg -> Model -> (Model, CmdType Msg)
 update msg model =
     case msg of
-      Sum num ->
-          (model { points = result }, cmd)
-          where
-              result = num + (points model)
-              cmd = if result == 55
-                       then CmdExit
+        Sum num ->
+            (model { points = result }, cmd)
+            where
+                result = num + (points model)
+                cmd =
+                    if result == 55
+                        then CmdExit
                     else CmdNone
-      Minus num ->
-          (model { points = num - (points model) }, CmdNone)
-      ChangeName userName ->
-          (model { name = userName }, cmd)
-          where cmd = if userName == "Hue"
-                         then sumNum 10
-                      else CmdNone
+        Minus num ->
+            (model { points = num - (points model) }, CmdNone)
+        ChangeName userName ->
+            (model { name = userName }, cmd)
+            where cmd =
+                        if userName == "Hue"
+                           then sumNum 10
+                        else CmdNone
 
 
-setNameCmd :: String -> CmdType Msg String
+setNameCmd :: String -> CmdType Msg
 setNameCmd theName =
-    Cmd $ Process { processType = ProcessOnly (do return theName) ChangeName
-                  , processCancellable = Nothing }
+    Cmd $ startProcess Process { processType = ProcessOnly (do return theName) ChangeName
+                                 , processCancellable = Nothing }
 
 sumIO :: Int -> IO Int
 sumIO num = do
     return num
 
-sumNum :: Int -> CmdType Msg Int
+sumNum :: Int -> CmdType Msg
 sumNum total =
-    Cmd $ Process { processType = ProcessMany (map sumIO $ [0..total]) Sum
-                   , processCancellable = Nothing }
+    Cmd $ startProcess Process { processType = ProcessMany (map sumIO $ [0..total]) Sum
+                               , processCancellable = Nothing }
