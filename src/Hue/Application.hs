@@ -1,22 +1,17 @@
 module Hue.Application
-    ( HueApplication(..)
-    , hueStart
-    , CmdType(..)
-    )
-where
+  ( HueApplication(..)
+  , hueStart
+  , CmdType(..)
+  ) where
 
-
-import Hue.Process
-import Control.Monad.STM
-import Control.Concurrent.STM.TChan
 import Control.Concurrent
 import Control.Concurrent.STM.TBQueue
-
+import Control.Concurrent.STM.TChan
+import Control.Monad.STM
+import Hue.Process
 
 -- -----------------------------------------------------------------------------
 -- Application
-
-
 -- | Here is were it all begins. The application is what will be executed in
 -- Hue.
 --
@@ -32,56 +27,61 @@ import Control.Concurrent.STM.TBQueue
 -- >          | PlayWithCats
 --
 -- The model is the state of your application. Normally, the model is a record.
-data HueApplication msg model context result1 result2 result3 =
-    HueApplication { appModel :: model
-                   , appUpdater :: context -> msg -> model -> (context, model, CmdType context msg)
-                   , appCmd :: CmdType context msg
-                   }
-
+data HueApplication msg model context result1 result2 result3 = HueApplication
+  { appModel :: model
+  , appUpdater :: context -> msg -> model -> ( context
+                                             , model
+                                             , CmdType context msg)
+  , appCmd :: CmdType context msg
+  }
 
 -- | 'CmdType' represent the type of command should be executed in the next loop iteration
 --
 -- * 'Cmd' receives a process to be executed
 -- * 'CmdNone' do nothing
 -- * 'CmdExit' stop the loop
-data CmdType context msg = Cmd context ((msg -> IO ()) -> IO Task) | CmdNone | CmdExit
-
+data CmdType context msg
+  = Cmd context
+        ((msg -> IO ()) -> IO Task)
+  | CmdNone
+  | CmdExit
 
 -- | 'hueStart' starts the loop with a given application
 hueStart :: HueApplication msg model context result1 result2 result3 -> IO model
 hueStart application = do
-    channel <- atomically (newTBQueue 100)
-    applicationLoop channel application
+  channel <- atomically (newTBQueue 100)
+  applicationLoop channel application
 
-
-broadcastWritter :: TBQueue (context, msg) -> context -> msg -> IO()
+broadcastWritter :: TBQueue (context, msg) -> context -> msg -> IO ()
 broadcastWritter channel context msg = do
-    atomically $ writeTBQueue channel (context, msg)
-    return ()
+  atomically $ writeTBQueue channel (context, msg)
+  return ()
 
-
-getNextApplicationIteration :: TBQueue (context, msg) -> (HueApplication msg model context result1 result2 result3) -> IO model
+getNextApplicationIteration ::
+     TBQueue (context, msg)
+  -> HueApplication msg model context result1 result2 result3
+  -> IO model
 getNextApplicationIteration channel application = do
-    let broadcastReader = readTBQueue channel
-    (context, msg) <- atomically broadcastReader
-    let (nextContext, nextModel, nextCmd) = (appUpdater application) context msg (appModel application)
-    let nextApplication = HueApplication { appModel = nextModel
-                                         , appUpdater = appUpdater application
-                                         , appCmd = nextCmd
-                                         }
-    applicationLoop channel nextApplication
+  let broadcastReader = readTBQueue channel
+  (context, msg) <- atomically broadcastReader
+  let (nextContext, nextModel, nextCmd) =
+        appUpdater application context msg (appModel application)
+  let nextApplication =
+        HueApplication
+        { appModel = nextModel
+        , appUpdater = appUpdater application
+        , appCmd = nextCmd
+        }
+  applicationLoop channel nextApplication
 
-
-
-applicationLoop :: TBQueue (context, msg) -> (HueApplication msg model context result1 result2 result3) -> IO model
+applicationLoop ::
+     TBQueue (context, msg)
+  -> HueApplication msg model context result1 result2 result3
+  -> IO model
 applicationLoop channel application =
-    case appCmd application of
-      Cmd context cmd ->
-        (do
-            cmd (broadcastWritter channel context)
-            getNextApplicationIteration channel application
-        )
-      CmdNone ->
-        getNextApplicationIteration channel application
-      CmdExit ->
-        return $ appModel application
+  case appCmd application of
+    Cmd context cmd -> do
+      cmd (broadcastWritter channel context)
+      getNextApplicationIteration channel application
+    CmdNone -> getNextApplicationIteration channel application
+    CmdExit -> return $ appModel application

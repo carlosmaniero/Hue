@@ -1,22 +1,19 @@
 module Hue.Process
-    ( ProcessType(..)
-    , Process(..)
-    , Cancellable(..)
-    , Task
-    , processOperationLength
-    , startProcess
-    )
-where
+  ( ProcessType(..)
+  , Process(..)
+  , Cancellable(..)
+  , Task
+  , processOperationLength
+  , startProcess
+  ) where
 
-import Data.Maybe
-import Control.Monad
 import Control.Concurrent
 import Control.Concurrent.MVar
+import Control.Monad
+import Data.Maybe
 
 -- -----------------------------------------------------------------------------
 -- Process
-
-
 -- | The process type where:
 --
 -- * 'ProcessOnly' represents a process with just one operation to be executed.
@@ -30,9 +27,12 @@ import Control.Concurrent.MVar
 -- The first argument of all these types is the operation to be processed
 -- followed by a function to transform the result in a message
 data ProcessType msg result
-    = ProcessOnly (IO result) (result -> msg)
-    | ProcessBulk [IO result] ([result] -> msg)
-    | ProcessMany [IO result] (result -> msg)
+  = ProcessOnly (IO result)
+                (result -> msg)
+  | ProcessBulk [IO result]
+                ([result] -> msg)
+  | ProcessMany [IO result]
+                (result -> msg)
 
 -- | 'Process' is an abstract representation of a process. It contains the
 -- type of the process and the broadcast where the result message will
@@ -47,127 +47,137 @@ data ProcessType msg result
 -- If the process is completed before the cancellable operation. It does not send
 -- the cancellable msg.
 -- be send when the operation is done.
-data Process msg result =
-    Process { processType :: ProcessType msg result
-            , processCancellable :: Maybe (Cancellable msg result)
-            }
-
+data Process msg result = Process
+  { processType :: ProcessType msg result
+  , processCancellable :: Maybe (Cancellable msg result)
+  }
 
 -- | An IO operation that can cancel a process (aka kill it)
-data Cancellable msg result =
-    Cancellable { cancellableOperation :: IO Bool
-                , cancellableMsg :: msg
-}
+data Cancellable msg result = Cancellable
+  { cancellableOperation :: IO Bool
+  , cancellableMsg :: msg
+  }
 
 processOperationLength :: Process msg result -> Int
 processOperationLength process =
-    case processType process of
-      ProcessOnly operation createMsg ->
-          1
-      ProcessBulk operations createMsg ->
-          1
-      ProcessMany operations createMsg ->
-          length operations
+  case processType process of
+    ProcessOnly operation createMsg -> 1
+    ProcessBulk operations createMsg -> 1
+    ProcessMany operations createMsg -> length operations
 
 -- -----------------------------------------------------------------------------
 -- Running Process
-
-
-
-
 -- | The task contains information about the process execution like the
 type Task = ThreadId
 
 -- | Given a 'Process' the 'startProcess' will running it and return a 'Task'
 startProcess :: Process msg result -> (msg -> IO ()) -> IO Task
-startProcess process broadcast = do
-    case processCancellable process of
-      Just _ ->
-          startProcessWithCancellable broadcast process
-      Nothing ->
-          startProcessWithoutCancellable broadcast process
+startProcess process broadcast =
+  case processCancellable process of
+    Just _ -> startProcessWithCancellable broadcast process
+    Nothing -> startProcessWithoutCancellable broadcast process
 
-
-startProcessWithoutCancellable :: (msg -> IO ()) -> Process msg result -> IO Task
-startProcessWithoutCancellable broadcast process = do
-    case processType process of
-      ProcessOnly operation createMsg ->
-          startProcessOnly operation createMsg broadcast
-      ProcessBulk operations createMsg ->
-          startProcessBulk operations createMsg broadcast
-      ProcessMany operations createMsg ->
-          startProcessMany operations createMsg broadcast
-
+startProcessWithoutCancellable ::
+     (msg -> IO ()) -> Process msg result -> IO Task
+startProcessWithoutCancellable broadcast process =
+  case processType process of
+    ProcessOnly operation createMsg ->
+      startProcessOnly operation createMsg broadcast
+    ProcessBulk operations createMsg ->
+      startProcessBulk operations createMsg broadcast
+    ProcessMany operations createMsg ->
+      startProcessMany operations createMsg broadcast
 
 startProcessWithCancellable :: (msg -> IO ()) -> Process msg result -> IO Task
-startProcessWithCancellable originalBroadcast process = forkIO $ do
+startProcessWithCancellable originalBroadcast process =
+  forkIO $ do
     blockedChannel <- newEmptyMVar
-
     let blockedBroadcast = putMVar blockedChannel
     let broadcast = blockedBroadcast . CancellableProcessMsg
     let cancellable = fromJust $ processCancellable process
-
     processTask <- startProcessWithoutCancellable broadcast process
-    cancellableTask <- startCancellableOperation (cancellableOperation cancellable) (cancellableMsg cancellable) blockedBroadcast
-
-    manageCancellableTasks (processOperationLength process) blockedChannel (cancellableMsg cancellable) originalBroadcast processTask cancellableTask
-
+    cancellableTask <-
+      startCancellableOperation
+        (cancellableOperation cancellable)
+        (cancellableMsg cancellable)
+        blockedBroadcast
+    manageCancellableTasks
+      (processOperationLength process)
+      blockedChannel
+      (cancellableMsg cancellable)
+      originalBroadcast
+      processTask
+      cancellableTask
 
 startProcessOnly :: IO result -> (result -> msg) -> (msg -> IO ()) -> IO Task
-startProcessOnly operation createMsg broadcast = forkIO $ do
+startProcessOnly operation createMsg broadcast =
+  forkIO $ do
     result <- operation
     broadcast $ createMsg result
 
-
 startProcessMany :: [IO result] -> (result -> msg) -> (msg -> IO ()) -> IO Task
-startProcessMany operations createMsg broadcast = forkIO $ do
-    mapM_ (\operation -> startProcessOnly operation createMsg broadcast) operations
+startProcessMany operations createMsg broadcast =
+  forkIO $
+  mapM_
+    (\operation -> startProcessOnly operation createMsg broadcast)
+    operations
 
-
-startProcessBulk :: [IO result] -> ([result] -> msg) -> (msg -> IO ()) -> IO Task
-startProcessBulk operations createMsg broadcast = forkIO $ do
+startProcessBulk ::
+     [IO result] -> ([result] -> msg) -> (msg -> IO ()) -> IO Task
+startProcessBulk operations createMsg broadcast =
+  forkIO $ do
     channel <- newEmptyMVar
-    mapM_ (\operation -> runOperationAsync operation $ putMVar channel) operations
-
+    mapM_
+      (\operation -> runOperationAsync operation $ putMVar channel)
+      operations
     results <- replicateM (length operations) $ takeMVar channel
     broadcast $ createMsg results
 
-
 runOperationAsync :: IO result -> (result -> IO ()) -> IO Task
-runOperationAsync operation broadcast = forkIO $ do
+runOperationAsync operation broadcast =
+  forkIO $ do
     result <- operation
     broadcast result
 
-data CancellableMsgType msg = CancellableMsg | CancellableProcessMsg msg
+data CancellableMsgType msg
+  = CancellableMsg
+  | CancellableProcessMsg msg
 
-
-manageCancellableTasks :: Int -> MVar (CancellableMsgType msg) -> msg -> (msg -> IO()) -> Task -> Task -> IO ()
+manageCancellableTasks ::
+     Int
+  -> MVar (CancellableMsgType msg)
+  -> msg
+  -> (msg -> IO ())
+  -> Task
+  -> Task
+  -> IO ()
 manageCancellableTasks 0 _ _ _ processTask cancellableTask = do
-    killThread processTask
-    killThread cancellableTask
+  killThread processTask
+  killThread cancellableTask
 manageCancellableTasks expectedCalls blockedChannel cancelledMsg broadcast processTask cancellableTask = do
-    msg <- takeMVar blockedChannel
+  msg <- takeMVar blockedChannel
+  case msg of
+    CancellableMsg ->
+      cancelProcess cancelledMsg broadcast processTask cancellableTask
+    CancellableProcessMsg msg -> do
+      broadcast msg
+      manageCancellableTasks
+        (expectedCalls - 1)
+        blockedChannel
+        cancelledMsg
+        broadcast
+        processTask
+        cancellableTask
 
-    case msg of
-      CancellableMsg ->
-          cancelProcess cancelledMsg broadcast processTask cancellableTask
-      CancellableProcessMsg msg ->
-          (do
-              broadcast msg
-              manageCancellableTasks (expectedCalls - 1) blockedChannel cancelledMsg broadcast processTask cancellableTask
-          )
-
-
-startCancellableOperation :: (IO Bool) -> msg -> (CancellableMsgType msg -> IO ()) -> IO Task
-startCancellableOperation operation msg broadcast = forkIO $ do
+startCancellableOperation ::
+     IO Bool -> msg -> (CancellableMsgType msg -> IO ()) -> IO Task
+startCancellableOperation operation msg broadcast =
+  forkIO $ do
     result <- operation
-    if result
-       then broadcast CancellableMsg
-    else return ()
+    when result $ broadcast CancellableMsg
 
-
-cancelProcess :: msg -> (msg -> IO()) -> Task -> Task -> IO ()
+cancelProcess :: msg -> (msg -> IO ()) -> Task -> Task -> IO ()
 cancelProcess cancelledMsg broadcast processTask cancellableTask = do
-    killThread processTask
-    killThread cancellableTask
-    broadcast cancelledMsg
+  killThread processTask
+  killThread cancellableTask
+  broadcast cancelledMsg

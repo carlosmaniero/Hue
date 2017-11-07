@@ -1,9 +1,9 @@
-import Test.Hspec
-import Test.QuickCheck
 import ApplicationSpec
 import Control.Exception (evaluate)
+import Test.Hspec
+import Test.QuickCheck
 
 main :: IO ()
-main = hspec $ do
-    describe "Integration Tests" $ do
-        describe "Hue.Application" processIOSpec
+main =
+  hspec $
+  describe "Integration Tests" $ describe "Hue.Application" processIOSpec
