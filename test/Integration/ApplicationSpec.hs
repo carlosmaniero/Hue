@@ -19,7 +19,6 @@ processIOSpec = do
                 model <- hueStart HueApplication { appModel = model
                                                  , appUpdater = update
                                                  , appCmd = setNameCmd RootContext "Hue"
-                                                 , appContext = RootContext
                                                  }
                 name model `shouldBe` "Hue"
                 points model `shouldBe` 55
@@ -33,7 +32,6 @@ processIOSpec = do
                                                 hueStart HueApplication { appModel = model
                                                                         , appUpdater = update
                                                                         , appCmd = CmdNone
-                                                                        , appContext = RootContext
                                                                         }
                                                ) :: IO (Either BlockedIndefinitelyOnSTM Model)
 

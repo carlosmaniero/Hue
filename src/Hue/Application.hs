@@ -36,7 +36,6 @@ data HueApplication msg model context result1 result2 result3 =
     HueApplication { appModel :: model
                    , appUpdater :: context -> msg -> model -> (context, model, CmdType context msg)
                    , appCmd :: CmdType context msg
-                   , appContext :: context
                    }
 
 
@@ -69,7 +68,6 @@ getNextApplicationIteration channel application = do
     let nextApplication = HueApplication { appModel = nextModel
                                          , appUpdater = appUpdater application
                                          , appCmd = nextCmd
-                                         , appContext = nextContext
                                          }
     applicationLoop channel nextApplication
 
