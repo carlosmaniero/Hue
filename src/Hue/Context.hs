@@ -1,13 +1,17 @@
 module Hue.Context where
 
+import Data.List
+
 newtype HueContextManager context = HueContextManager
   { hueContexts :: [HueContext context]
   }
 
+type ContextIdType = Int
+
 data HueContext context = HueContext
-  { hueContextId :: Int
+  { hueContextId :: ContextIdType
   , hueContext :: context
-  }
+  } deriving (Eq, Show)
 
 hueCreateContextManager :: HueContextManager context
 hueCreateContextManager = HueContextManager {hueContexts = []}
@@ -23,3 +27,11 @@ hueRegisterContext contextManager context =
       HueContext
       {hueContextId = length $ hueContexts contextManager, hueContext = context}
     contexts = newContext : hueContexts contextManager
+
+hueIsSameId :: ContextIdType -> HueContext hue -> Bool
+hueIsSameId contextId context = hueContextId context == contextId
+
+hueGetContextById ::
+     HueContextManager context -> ContextIdType -> Maybe (HueContext context)
+hueGetContextById contextManager contextId =
+    find (hueIsSameId contextId) (hueContexts contextManager)
