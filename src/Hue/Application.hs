@@ -4,15 +4,12 @@ module Hue.Application
   , CmdType(..)
   ) where
 
-import Control.Concurrent
-import Control.Concurrent.STM.TBQueue
-import Control.Concurrent.STM.TChan
-import Control.Monad.STM
+import Hue.Broadcast
 import Hue.Process
 
 -- -----------------------------------------------------------------------------
 -- Application
--- | Here is were it all begins. The application is what will be executed in
+-- | Here is where it all begins. The application is what will be executed in
 -- Hue.
 --
 -- * 'appModel' can be anything and it represents the state of your application.
@@ -42,28 +39,22 @@ data HueApplication msg model context result1 result2 result3 = HueApplication
 -- * 'CmdExit' stop the loop
 data CmdType context msg
   = Cmd context
-        ((msg -> IO ()) -> IO Task)
+        (HueBroadcastWritter msg -> IO Task)
   | CmdNone
   | CmdExit
 
 -- | 'hueStart' starts the loop with a given application
 hueStart :: HueApplication msg model context result1 result2 result3 -> IO model
 hueStart application = do
-  channel <- atomically (newTBQueue 100)
-  applicationLoop channel application
-
-broadcastWritter :: TBQueue (context, msg) -> context -> msg -> IO ()
-broadcastWritter channel context msg = do
-  atomically $ writeTBQueue channel (context, msg)
-  return ()
+  broadcast <- hueCreateBroadcast
+  applicationLoop broadcast application
 
 getNextApplicationIteration ::
-     TBQueue (context, msg)
+     HueBroadcast context msg
   -> HueApplication msg model context result1 result2 result3
   -> IO model
-getNextApplicationIteration channel application = do
-  let broadcastReader = readTBQueue channel
-  (context, msg) <- atomically broadcastReader
+getNextApplicationIteration broadcast application = do
+  (context, msg) <- hueBroadcastReader broadcast
   let (nextContext, nextModel, nextCmd) =
         appUpdater application context msg (appModel application)
   let nextApplication =
@@ -72,16 +63,16 @@ getNextApplicationIteration channel application = do
         , appUpdater = appUpdater application
         , appCmd = nextCmd
         }
-  applicationLoop channel nextApplication
+  applicationLoop broadcast nextApplication
 
 applicationLoop ::
-     TBQueue (context, msg)
+     HueBroadcast context msg
   -> HueApplication msg model context result1 result2 result3
   -> IO model
-applicationLoop channel application =
+applicationLoop broadcast application =
   case appCmd application of
     Cmd context cmd -> do
-      cmd (broadcastWritter channel context)
-      getNextApplicationIteration channel application
-    CmdNone -> getNextApplicationIteration channel application
+      cmd (hueBroadcastWritter broadcast context)
+      getNextApplicationIteration broadcast application
+    CmdNone -> getNextApplicationIteration broadcast application
     CmdExit -> return $ appModel application

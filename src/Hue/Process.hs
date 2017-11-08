@@ -11,6 +11,7 @@ import Control.Concurrent
 import Control.Concurrent.MVar
 import Control.Monad
 import Data.Maybe
+import Hue.Broadcast
 
 -- -----------------------------------------------------------------------------
 -- Process
@@ -71,14 +72,14 @@ processOperationLength process =
 type Task = ThreadId
 
 -- | Given a 'Process' the 'startProcess' will running it and return a 'Task'
-startProcess :: Process msg result -> (msg -> IO ()) -> IO Task
+startProcess :: Process msg result -> HueBroadcastWritter msg -> IO Task
 startProcess process broadcast =
   case processCancellable process of
     Just _ -> startProcessWithCancellable broadcast process
     Nothing -> startProcessWithoutCancellable broadcast process
 
 startProcessWithoutCancellable ::
-     (msg -> IO ()) -> Process msg result -> IO Task
+     HueBroadcastWritter msg -> Process msg result -> IO Task
 startProcessWithoutCancellable broadcast process =
   case processType process of
     ProcessOnly operation createMsg ->
@@ -88,7 +89,7 @@ startProcessWithoutCancellable broadcast process =
     ProcessMany operations createMsg ->
       startProcessMany operations createMsg broadcast
 
-startProcessWithCancellable :: (msg -> IO ()) -> Process msg result -> IO Task
+startProcessWithCancellable :: HueBroadcastWritter msg -> Process msg result -> IO Task
 startProcessWithCancellable originalBroadcast process =
   forkIO $ do
     blockedChannel <- newEmptyMVar
@@ -109,13 +110,14 @@ startProcessWithCancellable originalBroadcast process =
       processTask
       cancellableTask
 
-startProcessOnly :: IO result -> (result -> msg) -> (msg -> IO ()) -> IO Task
+startProcessOnly :: IO result -> (result -> msg) -> HueBroadcastWritter msg -> IO Task
 startProcessOnly operation createMsg broadcast =
   forkIO $ do
     result <- operation
     broadcast $ createMsg result
 
-startProcessMany :: [IO result] -> (result -> msg) -> (msg -> IO ()) -> IO Task
+startProcessMany ::
+     [IO result] -> (result -> msg) -> HueBroadcastWritter msg -> IO Task
 startProcessMany operations createMsg broadcast =
   forkIO $
   mapM_
@@ -123,7 +125,7 @@ startProcessMany operations createMsg broadcast =
     operations
 
 startProcessBulk ::
-     [IO result] -> ([result] -> msg) -> (msg -> IO ()) -> IO Task
+     [IO result] -> ([result] -> msg) -> HueBroadcastWritter msg -> IO Task
 startProcessBulk operations createMsg broadcast =
   forkIO $ do
     channel <- newEmptyMVar
@@ -147,7 +149,7 @@ manageCancellableTasks ::
      Int
   -> MVar (CancellableMsgType msg)
   -> msg
-  -> (msg -> IO ())
+  -> HueBroadcastWritter msg
   -> Task
   -> Task
   -> IO ()
@@ -176,7 +178,7 @@ startCancellableOperation operation msg broadcast =
     result <- operation
     when result $ broadcast CancellableMsg
 
-cancelProcess :: msg -> (msg -> IO ()) -> Task -> Task -> IO ()
+cancelProcess :: msg -> HueBroadcastWritter msg -> Task -> Task -> IO ()
 cancelProcess cancelledMsg broadcast processTask cancellableTask = do
   killThread processTask
   killThread cancellableTask
