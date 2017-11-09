@@ -35,13 +35,30 @@ hueRegisterContext contextManager context =
 hueIsSameId :: Eq context => ContextIdType -> HueContext context -> Bool
 hueIsSameId contextId context = hueContextId context == contextId
 
-hueGetContextById :: Eq context =>
-     HueContextManager context -> ContextIdType -> Maybe (HueContext context)
+hueGetContextById ::
+     Eq context
+  => HueContextManager context
+  -> ContextIdType
+  -> Maybe (HueContext context)
 hueGetContextById contextManager contextId =
   find (hueIsSameId contextId) (hueContexts contextManager)
 
-hueHasContextChange :: Eq context =>
-     HueContextManager context
+hueTakeContextById ::
+     Eq context
+  => HueContextManager context
+  -> ContextIdType
+  -> (HueContextManager context, Maybe (HueContext context))
+hueTakeContextById contextManager contextId =
+  case hueGetContextById contextManager contextId of
+    Just context ->
+      (contextManager {hueContexts = filteredContexts}, Just context)
+      where filteredContexts =
+              filter (not . hueIsSameId contextId) (hueContexts contextManager)
+    Nothing -> (contextManager, Nothing)
+
+hueHasContextChange ::
+     Eq context
+  => HueContextManager context
   -> ContextIdType
   -> HueContext context
   -> Either Bool Bool
