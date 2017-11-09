@@ -16,5 +16,23 @@ contextSpec =
       let contextManager = hueCreateContextManager
       let (contextManager', context) =
             hueRegisterContext contextManager "my-context"
-      let expectedContext = hueGetContextById contextManager' $ hueContextId context
+      let expectedContext =
+            hueGetContextById contextManager' $ hueContextId context
       expectedContext `shouldBe` Just context
+    describe "check for context changes" $ do
+      it "should return false given that the context was not changed" $ do
+        let contextManager = hueCreateContextManager
+        let (contextManager', context) =
+              hueRegisterContext contextManager "my-context"
+        hueHasContextChange contextManager' (hueContextId context) context `shouldBe`
+          Right False
+      it "should return true when the context is changed" $ do
+        let contextManager = hueCreateContextManager
+        let (contextManager', context) =
+              hueRegisterContext contextManager "my-context"
+        let changedContext = context {hueContext = "my-context-changed"}
+        hueHasContextChange
+          contextManager'
+          (hueContextId changedContext)
+          changedContext `shouldBe`
+          Right True

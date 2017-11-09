@@ -8,7 +8,10 @@ newtype HueContextManager context = HueContextManager
 
 type ContextIdType = Int
 
-data HueContext context = HueContext
+type ContextType context = context
+
+data (Eq context) =>
+     HueContext context = HueContext
   { hueContextId :: ContextIdType
   , hueContext :: context
   } deriving (Eq, Show)
@@ -17,7 +20,8 @@ hueCreateContextManager :: HueContextManager context
 hueCreateContextManager = HueContextManager {hueContexts = []}
 
 hueRegisterContext ::
-     HueContextManager context
+     Eq context
+  => HueContextManager context
   -> context
   -> (HueContextManager context, HueContext context)
 hueRegisterContext contextManager context =
@@ -28,10 +32,20 @@ hueRegisterContext contextManager context =
       {hueContextId = length $ hueContexts contextManager, hueContext = context}
     contexts = newContext : hueContexts contextManager
 
-hueIsSameId :: ContextIdType -> HueContext hue -> Bool
+hueIsSameId :: Eq context => ContextIdType -> HueContext context -> Bool
 hueIsSameId contextId context = hueContextId context == contextId
 
-hueGetContextById ::
+hueGetContextById :: Eq context =>
      HueContextManager context -> ContextIdType -> Maybe (HueContext context)
 hueGetContextById contextManager contextId =
-    find (hueIsSameId contextId) (hueContexts contextManager)
+  find (hueIsSameId contextId) (hueContexts contextManager)
+
+hueHasContextChange :: Eq context =>
+     HueContextManager context
+  -> ContextIdType
+  -> HueContext context
+  -> Either Bool Bool
+hueHasContextChange contextManager contextId context =
+  case hueGetContextById contextManager contextId of
+    Just storedContext -> Right $ storedContext /= context
+    Nothing -> Left True
