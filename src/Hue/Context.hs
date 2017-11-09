@@ -1,24 +1,40 @@
-module Hue.Context where
+module Hue.Context
+  ( HueContextManager(..)
+  , HueContext(..)
+  , hueCreateContextManager
+  , hueRegisterContext
+  , hueHasContextChange
+  , hueGetContextById
+  , hueTakeContextById
+  ) where
 
 import Data.List
 
+-- -----------------------------------------------------------------------------
+-- Contexts
+-- | The 'HueContextManager' is used to store and manage all contexts of
+-- the application
 newtype HueContextManager context = HueContextManager
   { hueContexts :: [HueContext context]
   }
 
+-- | The type of the context id
 type ContextIdType = Int
 
-type ContextType context = context
-
+-- | The 'HueContext' is a record created by the 'ContextManager' you
+-- should never create an instence of it by yourself.
 data (Eq context) =>
      HueContext context = HueContext
   { hueContextId :: ContextIdType
   , hueContext :: context
   } deriving (Eq, Show)
 
+-- | Create a 'HueContextManager' instance with no contexts
 hueCreateContextManager :: HueContextManager context
 hueCreateContextManager = HueContextManager {hueContexts = []}
 
+-- | Register a context in the 'HueContextManager' and return
+-- a 'HueContext' instance
 hueRegisterContext ::
      Eq context
   => HueContextManager context
@@ -35,6 +51,7 @@ hueRegisterContext contextManager context =
 hueIsSameId :: Eq context => ContextIdType -> HueContext context -> Bool
 hueIsSameId contextId context = hueContextId context == contextId
 
+-- | Get a context in the 'HueContextManager' by 'hueContextId'
 hueGetContextById ::
      Eq context
   => HueContextManager context
@@ -43,6 +60,7 @@ hueGetContextById ::
 hueGetContextById contextManager contextId =
   find (hueIsSameId contextId) (hueContexts contextManager)
 
+-- | Get and remove a context in the 'HueContextManager' by 'hueContextId'
 hueTakeContextById ::
      Eq context
   => HueContextManager context
@@ -56,6 +74,7 @@ hueTakeContextById contextManager contextId =
               filter (not . hueIsSameId contextId) (hueContexts contextManager)
     Nothing -> (contextManager, Nothing)
 
+-- | Check if the context is changed
 hueHasContextChange ::
      Eq context
   => HueContextManager context
