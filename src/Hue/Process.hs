@@ -5,6 +5,7 @@ module Hue.Process
   , Task
   , processOperationLength
   , startProcess
+  , hueProcessDoesNothing
   ) where
 
 import Control.Concurrent
@@ -89,7 +90,8 @@ startProcessWithoutCancellable broadcast process =
     ProcessMany operations createMsg ->
       startProcessMany operations createMsg broadcast
 
-startProcessWithCancellable :: HueBroadcastWritter msg -> Process msg result -> IO Task
+startProcessWithCancellable ::
+     HueBroadcastWritter msg -> Process msg result -> IO Task
 startProcessWithCancellable originalBroadcast process =
   forkIO $ do
     blockedChannel <- newEmptyMVar
@@ -110,7 +112,8 @@ startProcessWithCancellable originalBroadcast process =
       processTask
       cancellableTask
 
-startProcessOnly :: IO result -> (result -> msg) -> HueBroadcastWritter msg -> IO Task
+startProcessOnly ::
+     IO result -> (result -> msg) -> HueBroadcastWritter msg -> IO Task
 startProcessOnly operation createMsg broadcast =
   forkIO $ do
     result <- operation
@@ -183,3 +186,7 @@ cancelProcess cancelledMsg broadcast processTask cancellableTask = do
   killThread processTask
   killThread cancellableTask
   broadcast cancelledMsg
+
+-- | This method does nothing. It is a simple useful helper.
+hueProcessDoesNothing :: HueBroadcastWritter msg -> IO Task
+hueProcessDoesNothing _ = forkIO $ return ()

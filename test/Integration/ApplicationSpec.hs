@@ -5,6 +5,8 @@ import Control.Concurrent.MVar
 import Control.Exception
 import Control.Exception.Base
 import Hue.Application
+import Hue.Broadcast
+import Hue.Context
 import Hue.Process
 import Test.Hspec
 import Test.QuickCheck
@@ -20,7 +22,8 @@ processIOSpec =
             HueApplication
             { appModel = model
             , appUpdater = update
-            , appCmd = setNameCmd RootContext "Hue"
+            , appMainContext = RootContext
+            , appInit = setNameProcess "Hue"
             }
         name model `shouldBe` "Hue"
         points model `shouldBe` 55
@@ -32,7 +35,11 @@ processIOSpec =
                   try
                     (hueStart
                        HueApplication
-                       {appModel = model, appUpdater = update, appCmd = CmdNone}) :: IO (Either BlockedIndefinitelyOnSTM Model)
+                       { appModel = model
+                       , appMainContext = RootContext
+                       , appUpdater = update
+                       , appInit = hueProcessDoesNothing
+                       }) :: IO (Either BlockedIndefinitelyOnSTM Model)
                 case result of
                   Left ex -> putMVar channel True
                   Right val -> putMVar channel True)
@@ -53,8 +60,13 @@ data Model = Model
 
 data Context =
   RootContext
+  deriving (Eq)
 
-update :: Context -> Msg -> Model -> (Context, Model, CmdType Context Msg)
+update ::
+     HueContext Context
+  -> Msg
+  -> Model
+  -> (HueContext Context, Model, CmdType (HueContext Context) Msg)
 update context msg model =
   case msg of
     Sum num -> (context, model {points = result}, cmd)
@@ -70,9 +82,8 @@ update context msg model =
                 then sumNum context 10
                 else CmdNone
 
-setNameCmd :: Context -> String -> CmdType Context Msg
-setNameCmd context theName =
-  Cmd context $
+setNameProcess :: String -> HueBroadcastWritter Msg -> IO Task
+setNameProcess theName =
   startProcess
     Process
     { processType = ProcessOnly (return theName) ChangeName
@@ -82,7 +93,7 @@ setNameCmd context theName =
 sumIO :: Int -> IO Int
 sumIO = return
 
-sumNum :: Context -> Int -> CmdType Context Msg
+sumNum :: HueContext Context -> Int -> CmdType (HueContext Context) Msg
 sumNum context total =
   Cmd context $
   startProcess
