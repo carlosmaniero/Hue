@@ -43,6 +43,7 @@ data Eq context =>
                                                          , model
                                                          , CmdType (HueContext context) msg)
   , iterCmd :: CmdType (HueContext context) msg
+  , iterSource :: HueBroadcastSource
   }
 
 -- | 'CmdType' represent the type of command should be executed in the next loop iteration
@@ -74,6 +75,7 @@ hueStart application = do
       , iterUpdater = appUpdater application
       , iterContextManager = contextManager
       , iterCmd = Cmd contextInstance (appInit application)
+      , iterSource = HueBroadcastApp
       }
 
 getNextApplicationIteration ::
@@ -82,7 +84,7 @@ getNextApplicationIteration ::
   -> HueApplicationIteration msg model context result1 result2 result3
   -> IO model
 getNextApplicationIteration broadcast iteration = do
-  (context, msg) <- hueBroadcastReader broadcast
+  (source, context, msg) <- hueBroadcastReader broadcast
   let (nextContext, nextModel, nextCmd) =
         iterUpdater iteration context msg (iterModel iteration)
   let nextIteration =
@@ -91,6 +93,7 @@ getNextApplicationIteration broadcast iteration = do
         , iterUpdater = iterUpdater iteration
         , iterContextManager = iterContextManager iteration
         , iterCmd = nextCmd
+        , iterSource = HueBroadcastApp
         }
   applicationLoop broadcast nextIteration
 
@@ -102,7 +105,7 @@ applicationLoop ::
 applicationLoop broadcast iteration =
   case iterCmd iteration of
     Cmd context cmd -> do
-      cmd (hueBroadcastWritter broadcast context)
+      cmd (hueBroadcastWritter broadcast (iterSource iteration) context)
       getNextApplicationIteration broadcast iteration
     CmdNone -> getNextApplicationIteration broadcast iteration
     CmdExit -> return $ iterModel iteration
