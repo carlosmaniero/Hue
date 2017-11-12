@@ -4,6 +4,7 @@ module Hue.Application
   , CmdType(..)
   ) where
 
+import Hue.Adapter
 import Hue.Broadcast
 import Hue.Context
 import Hue.Process
@@ -26,24 +27,24 @@ import Hue.Process
 --
 -- The model is the state of your application. Normally, the model is a record.
 data Eq context =>
-     HueApplication msg model context result1 result2 result3 = HueApplication
+     HueApplication msg model context = HueApplication
   { appModel :: model
   , appUpdater :: HueContext context -> msg -> model -> ( HueContext context
                                                         , model
                                                         , CmdType (HueContext context) msg)
   , appMainContext :: context
   , appInit :: HueBroadcastWritter msg -> IO Task
+  , appAdapters :: [HueAdapter context msg]
   }
 
 data Eq context =>
-     HueApplicationIteration msg model context result1 result2 result3 = HueApplicationIteration
+     HueApplicationIteration msg model context = HueApplicationIteration
   { iterModel :: model
   , iterContextManager :: HueContextManager context
   , iterUpdater :: HueContext context -> msg -> model -> ( HueContext context
                                                          , model
                                                          , CmdType (HueContext context) msg)
   , iterCmd :: CmdType (HueContext context) msg
-  , iterSource :: HueBroadcastSource
   }
 
 -- | 'CmdType' represent the type of command should be executed in the next loop iteration
@@ -57,13 +58,17 @@ data CmdType context msg
   | CmdNone
   | CmdExit
 
+hueRegisterAdapters ::
+     [HueAdapter context msg] -> HueBroadcast context msg -> IO ()
+hueRegisterAdapters adapters broadcast = do
+  let broadcastWritter = hueBroadcastAdapterWritter broadcast
+  mapM_ (\adapter -> adapter broadcastWritter) adapters
+
 -- | 'hueStart' starts the loop with a given application
-hueStart ::
-     Eq context
-  => HueApplication msg model context result1 result2 result3
-  -> IO model
+hueStart :: Eq context => HueApplication msg model context -> IO model
 hueStart application = do
   broadcast <- hueCreateBroadcast
+  hueRegisterAdapters (appAdapters application) broadcast
   applicationLoop broadcast iteration
   where
     blankContextManager = hueCreateContextManager
@@ -75,37 +80,45 @@ hueStart application = do
       , iterUpdater = appUpdater application
       , iterContextManager = contextManager
       , iterCmd = Cmd contextInstance (appInit application)
-      , iterSource = HueBroadcastApp
       }
 
 getNextApplicationIteration ::
      Eq context
   => HueBroadcast context msg
-  -> HueApplicationIteration msg model context result1 result2 result3
+  -> HueApplicationIteration msg model context
   -> IO model
 getNextApplicationIteration broadcast iteration = do
-  (source, context, msg) <- hueBroadcastReader broadcast
+  source <- hueBroadcastReader broadcast
+  let (nextContextManager, context, msg) =
+        case source of
+          HueBroadcastApp context msg ->
+            (iterContextManager iteration, context, msg)
+          HueBroadcastAdapter contextToRegister msg ->
+            (contextManager, context, msg)
+            where (contextManager, context) =
+                    hueRegisterContext
+                      (iterContextManager iteration)
+                      contextToRegister
   let (nextContext, nextModel, nextCmd) =
         iterUpdater iteration context msg (iterModel iteration)
   let nextIteration =
         HueApplicationIteration
         { iterModel = nextModel
         , iterUpdater = iterUpdater iteration
-        , iterContextManager = iterContextManager iteration
+        , iterContextManager = nextContextManager
         , iterCmd = nextCmd
-        , iterSource = HueBroadcastApp
         }
   applicationLoop broadcast nextIteration
 
 applicationLoop ::
      Eq context
   => HueBroadcast context msg
-  -> HueApplicationIteration msg model context result1 result2 result3
+  -> HueApplicationIteration msg model context
   -> IO model
 applicationLoop broadcast iteration =
   case iterCmd iteration of
     Cmd context cmd -> do
-      cmd (hueBroadcastWritter broadcast (iterSource iteration) context)
+      cmd (hueBroadcastWritter broadcast . HueBroadcastApp context)
       getNextApplicationIteration broadcast iteration
     CmdNone -> getNextApplicationIteration broadcast iteration
     CmdExit -> return $ iterModel iteration

@@ -2,6 +2,7 @@ module Hue.Broadcast
   ( HueBroadcast(..)
   , HueBroadcastWritter
   , hueCreateBroadcast
+  , hueBroadcastAdapterWritter
   , HueBroadcastSource(..)
   ) where
 
@@ -11,14 +12,15 @@ import Hue.Context
 
 type HueBroadcastWritter msg = (msg -> IO ())
 
-data HueBroadcastSource
-  = HueBroadcastApp
-  | HueBroadcastAdapter
+data HueBroadcastSource context msg
+  = HueBroadcastApp (HueContext context)
+                    msg
+  | HueBroadcastAdapter context msg
 
 data HueBroadcast context msg = HueBroadcast
-  { hueBroadcastChannel :: TBQueue (HueBroadcastSource, HueContext context, msg)
-  , hueBroadcastWritter :: HueBroadcastSource -> HueContext context -> msg -> IO ()
-  , hueBroadcastReader :: IO (HueBroadcastSource, HueContext context, msg)
+  { hueBroadcastChannel :: TBQueue (HueBroadcastSource context msg)
+  , hueBroadcastWritter :: HueBroadcastSource context msg -> IO ()
+  , hueBroadcastReader :: IO (HueBroadcastSource context msg)
   }
 
 hueCreateBroadcast :: IO (HueBroadcast context msg)
@@ -31,12 +33,14 @@ hueCreateBroadcast = do
     , hueBroadcastReader = atomically $ readTBQueue channel
     }
 
+hueBroadcastAdapterWritter :: HueBroadcast context msg -> context -> msg -> IO ()
+hueBroadcastAdapterWritter broadcast context msg =
+  hueBroadcastWritter broadcast (HueBroadcastAdapter context msg)
+
 broadcastWritter ::
-     TBQueue (HueBroadcastSource, HueContext context, msg)
-  -> HueBroadcastSource
-  -> HueContext context
-  -> msg
+     TBQueue (HueBroadcastSource context msg)
+  -> HueBroadcastSource context msg
   -> IO ()
-broadcastWritter channel source context msg = do
-  atomically $ writeTBQueue channel (source, context, msg)
+broadcastWritter channel source = do
+  atomically $ writeTBQueue channel source
   return ()

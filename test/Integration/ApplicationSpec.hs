@@ -15,38 +15,56 @@ processIOSpec :: SpecWith ()
 processIOSpec =
   describe "Given an updater, a model and a start command" $ do
     let model = Model {name = "", points = 0}
-    describe "When the start command is name request change" $ do
+    describe "When the start command is a name request change" $ do
       it "should update the model with the new name and the total of points" $ do
-        model <-
-          hueStart
-            HueApplication
-            { appModel = model
-            , appUpdater = update
-            , appMainContext = RootContext
-            , appInit = setNameProcess "Hue"
-            }
-        name model `shouldBe` "Hue"
-        points model `shouldBe` 55
+        modelChannel <- newEmptyMVar
+        runApplicationAsync
+          modelChannel
+          HueApplication
+          { appModel = model
+          , appUpdater = update
+          , appMainContext = RootContext
+          , appInit = setNameProcess "Hue"
+          , appAdapters = []
+          }
+        modelResult <- takeMVar modelChannel
+        case modelResult of
+          Right model -> do
+            name model `shouldBe` "Hue"
+            points model `shouldBe` 55
       it "should never die if the CmdExit is not returned" $ do
         channel <- newEmptyMVar
         tid <-
-          forkIO
-            (do result <-
-                  try
-                    (hueStart
-                       HueApplication
-                       { appModel = model
-                       , appMainContext = RootContext
-                       , appUpdater = update
-                       , appInit = hueProcessDoesNothing
-                       }) :: IO (Either BlockedIndefinitelyOnSTM Model)
-                case result of
-                  Left ex -> putMVar channel True
-                  Right val -> putMVar channel True)
+          runApplicationAsync
+            channel
+            HueApplication
+            { appModel = model
+            , appMainContext = RootContext
+            , appUpdater = update
+            , appInit = hueProcessDoesNothing
+            , appAdapters = []
+            }
         threadDelay 500000
         killThread tid
         isEmpty <- isEmptyMVar channel
         isEmpty `shouldBe` True
+    describe "Given an adapter" $
+      it "should send a message from the update" $ do
+        adapterChannel <- newEmptyMVar
+        modelChannel <- newEmptyMVar
+        runApplicationAsync
+          modelChannel
+          HueApplication
+          { appModel = model
+          , appUpdater = update
+          , appMainContext = RootContext
+          , appInit = setNameProcess "HueBr"
+          , appAdapters = [channelAdapter adapterChannel]
+          }
+        putMVar adapterChannel (AdapterContext, Sum 55)
+        modelResult <- takeMVar modelChannel
+        case modelResult of
+          Right model -> points model `shouldBe` 55
 
 data Msg
   = Sum Int
@@ -58,8 +76,9 @@ data Model = Model
   , points :: Int
   }
 
-data Context =
-  RootContext
+data Context
+  = RootContext
+  | AdapterContext
   deriving (Eq)
 
 update ::
@@ -82,6 +101,16 @@ update context msg model =
                 then sumNum context 10
                 else CmdNone
 
+runApplicationAsync ::
+     MVar (Either BlockedIndefinitelyOnSTM Model)
+  -> HueApplication Msg Model Context
+  -> IO ThreadId
+runApplicationAsync channel application =
+  forkIO $ do
+    result <-
+      try (hueStart application) :: IO (Either BlockedIndefinitelyOnSTM Model)
+    putMVar channel result
+
 setNameProcess :: String -> HueBroadcastWritter Msg -> IO Task
 setNameProcess theName =
   startProcess
@@ -101,3 +130,11 @@ sumNum context total =
     { processType = ProcessMany (map sumIO [0 .. total]) Sum
     , processCancellable = Nothing
     }
+
+channelAdapter :: MVar (Context, Msg) -> (Context -> Msg -> IO ()) -> IO Task
+channelAdapter channel broadcast =
+  forkIO $ do
+    (context, msg) <- takeMVar channel
+    broadcast context msg
+    channelAdapter channel broadcast
+    return ()
