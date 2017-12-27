@@ -1,5 +1,5 @@
 name:                Hue
-version:             0.1.0.0
+version:             0.0.0.1
 -- synopsis:
 -- description:
 homepage:            https://github.com/carlosmaniero/Hue#readme
@@ -7,56 +7,26 @@ license:             BSD3
 license-file:        LICENSE
 author:              Carlos Maniero
 maintainer:          carlosmaniero@gmail.com
-description:         Hue is a simple architecture elm-based for Haskell programs.
-synopsis:            A Haskell architecte elm-based
-category:            Control
+copyright:           2017 Carlos Maniero
+category:            Concurrency
 build-type:          Simple
 extra-source-files:  README.md
 cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Hue.Application
-                     , Hue.Process
-                     , Hue.Broadcast
+  exposed-modules:     Hue.Iteration
                      , Hue.Context
-                     , Hue.Adapter
   build-depends:       base >= 4.7 && < 5
-                     , deepseq >= 1.3.0.0
-                     , stm >= 2.4.4.1
   default-language:    Haskell2010
 
-executable Hue-exe
-  hs-source-dirs:      app
-  main-is:             Main.hs
-  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
-  build-depends:       base
-                     , Hue
-  default-language:    Haskell2010
-
-test-suite Hue-test-unit
+test-suite Hue-unit-test
   type:                exitcode-stdio-1.0
-  hs-source-dirs:      test/Unit
-  main-is:             HueSpec.hs
+  hs-source-dirs:      test/unit
+  main-is:             Spec.hs
   build-depends:       base
-                     , hspec
-                     , QuickCheck
-                     , hlint
                      , Hue
-  other-modules:       ProcessIOSpec
-                     , ContextSpec
-  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
-  default-language:    Haskell2010
-
-test-suite Hue-test-integration
-  type:                exitcode-stdio-1.0
-  hs-source-dirs:      test/Integration
-  main-is:             HueSpec.hs
-  build-depends:       base
                      , hspec
-                     , QuickCheck
-                     , Hue
-  other-modules:       ApplicationSpec
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
 
