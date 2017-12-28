@@ -5,9 +5,15 @@ import Hue.Context
 -- |The `HueStateIteration` is a kind of `HueIteration` monad that has as result a state
 type HueStateIteration state response = HueIteration state response state
 
+
+-- |The `HueResolver` type is used to represent the `hueRespond` with a `HueContext`.
+-- This is the first argument of an `HueIterationUpdater` and is used to respond
+-- to the `hueDispath` caller.
+type HueResolver state response = response -> HueIteration state response ()
+
 -- |The `HueIterationUpdater` is a function defined to update a given state.
--- It takes three arguments the `context`, the `msg` and the `state`.
--- Where `msg`` is the message used to verify what kind of update should be performed.
+-- It takes three arguments the `resolver`, the `msg` and the `state`.
+-- Where `msg` is the message used to verify what kind of update should be performed.
 --
 -- @
 --   data Msg = Increase | Decrease
@@ -17,22 +23,22 @@ type HueStateIteration state response = HueIteration state response state
 --   type State = Int
 --
 --   updater :: HueIterationUpdater Msg Response State
---   updater context state msg = do
+--   updater resolver state msg = do
 --     let result =
 --       case msg of
 --         Increase ->
 --           state + 1
 --         Decrease ->
 --           state - 1
---     hueRespond result
+--     resolver result
 --     return result
 -- @
 --
 -- The returned state will be passed as argument in the next update call and the
--- `hueRespond` will sent the given `Response` to the update caller. You should see
--- how it works in the `hueDispatch` documentation.
+-- `resolver` acts like a Javascript Promise that is it will sent the given `Response`
+-- to the update caller. You should see how it works in the `hueDispatch` documentation.
 type HueIterationUpdater msg response state =
-  HueContext -> state -> msg -> HueStateIteration state response
+  HueResolver state response -> state -> msg -> HueStateIteration state response
 
 type HueIterationTask state response = state -> IO (HueStateIteration state response)
 
@@ -121,4 +127,4 @@ hueIterationToResult (HueOperation iterationData state) = HueIterationResult sta
 
 huePerformIteration :: HueContext -> state -> msg -> HueIterationUpdater msg response state -> HueIterationResult state response
 huePerformIteration context state msg updater =
-  hueIterationToResult $ updater context state msg
+  hueIterationToResult $ updater (hueRespond context) state msg
