@@ -5,7 +5,6 @@ import Hue.Context
 -- |The `HueStateIteration` is a kind of `HueIteration` monad that has as result a state
 type HueStateIteration state response = HueIteration state response state
 
-
 -- |The `HueResolver` type is used to represent the `hueRespond` with a `HueContext`.
 -- This is the first argument of an `HueIterationUpdater` and is used to respond
 -- to the `hueDispath` caller.
@@ -40,28 +39,34 @@ type HueResolver state response = response -> HueIteration state response ()
 type HueIterationUpdater msg response state =
   HueResolver state response -> state -> msg -> HueStateIteration state response
 
-type HueIterationTask state response = state -> IO (HueStateIteration state response)
+-- The `HueIterationTask` encapsulates inside the `IO` Monad a function that receive
+-- an updated version of the application state and returns a new HueStateIterataion.
+-- It is created by the `huePerformTask`.
+type HueIterationTask state response = IO (state -> HueStateIteration state response)
 
+-- This type contains a context and the context response
 type HueIterationResponse response = (HueContext, response)
 
+-- The `HueIterationData` contains information that should be passed for each monad
+-- binding.
 data HueIterationData state response = HueIterationData
             { hueIterationTasks :: [HueIterationTask state response]
             , hueIterationResponses :: [HueIterationResponse response]
             }
 
-emptyIterationData = HueIterationData [] []
-
+-- This function receive two `HueIterationData` and create a new joining their data.
 hueJoinIterationData :: HueIterationData state response -> HueIterationData state response -> HueIterationData state response
 hueJoinIterationData iterationA iterationB = HueIterationData tasks responses
   where
     tasks = (hueIterationTasks iterationA) ++ (hueIterationTasks iterationB)
     responses = (hueIterationResponses iterationA) ++ (hueIterationResponses iterationB)
 
-
+-- Return the `HueIterationData` of an `HueIteration`
 hueGetIterationData :: HueIteration state response result -> HueIterationData state response
 hueGetIterationData (HueOperation iterationData _) = iterationData
-hueGetIterationData _ = emptyIterationData
+hueGetIterationData _ = HueIterationData [] []
 
+-- "Unbox" the `result` of the `HueIteration` monad.
 hueGetIterationResult :: HueIteration state response result -> result
 hueGetIterationResult (HueResult result) = result
 hueGetIterationResult (HueOperation _ result) = result
@@ -79,9 +84,9 @@ huePerformTask
 huePerformTask ioOperation callback =
   HueOperation hueIterationData ()
   where
-    task state = do
+    task = do
       result <- ioOperation
-      return $ callback state result
+      return $ \state -> callback state result
     hueIterationData = HueIterationData [task] []
 
 hueRespond :: HueContext -> response -> HueIteration state response ()

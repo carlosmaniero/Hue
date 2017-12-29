@@ -56,7 +56,8 @@ hueIterationSpec =
               return $ currentState
         it "Should register the given task" $ do
           let task = head $ hueIterationTasksResult iterationResult
-          ioIterationResult <- task givenState
+          ioIterationTask <- task
+          let ioIterationResult = ioIterationTask givenState
           hueIterationStateResult (hueIterationToResult ioIterationResult) `shouldBe` State 42 "The answer"
       describe "Given many IO operations" $ do
         let iterationResult = performUpdate $ \resolver currentState currentMsg -> do
@@ -67,11 +68,11 @@ hueIterationSpec =
                 return $ State (-1) text
               return $ currentState
         it "Should register the given tasks" $ do
-          let task1 = (hueIterationTasksResult iterationResult) !! 0
-          let task2 = (hueIterationTasksResult iterationResult) !! 1
-          ioIterationResult1 <- task1 givenState
+          task1 <- (hueIterationTasksResult iterationResult) !! 0
+          task2 <- (hueIterationTasksResult iterationResult) !! 1
+          let ioIterationResult1 = task1 givenState
           hueIterationStateResult (hueIterationToResult ioIterationResult1) `shouldBe` State 42 "The answer"
-          ioIterationResult2 <- task2 givenState
+          let ioIterationResult2 = task2 givenState
           hueIterationStateResult (hueIterationToResult ioIterationResult2) `shouldBe` State (-1) "I don't know the answer"
     describe "Responding to the context" $ do
       describe "When I perform the respond operation to the given context" $ do
