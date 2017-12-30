@@ -61,21 +61,15 @@ hueJoinIterationData iterationA iterationB = HueIterationData tasks responses
     tasks = (hueIterationTasks iterationA) ++ (hueIterationTasks iterationB)
     responses = (hueIterationResponses iterationA) ++ (hueIterationResponses iterationB)
 
--- |Return the `HueIterationData` of an `HueIteration`
-hueGetIterationData :: HueIteration state response result -> HueIterationData state response
-hueGetIterationData (HueIteration iterationData _) = iterationData
-
--- |"Unbox" the `result` of the `HueIteration` monad.
-hueGetIterationResult :: HueIteration state response result -> result
-hueGetIterationResult (HueIteration _ result) = result
-
 -- |`HueIteration` is a type that orchestrates the state and the response is commonly used
 -- as `HueStateIteration`.
 -- It is a polyphoric type that has the `state`, `response` and `result` as flexible types.
 data HueIteration state response result
   -- |HueIteration has a `HueIterationData` and a result (commonly defined as `()`) when `>>=`
   -- to another `HueIteration` a new `HueIteration` is created with a join of their `HueIterationData`.
-  = HueIteration (HueIterationData state response) result
+  = HueIteration { hueIterationData :: (HueIterationData state response)
+                 , hueIterationResult :: result
+                 }
   -- |It's used in `return` at the `Applicative` instance.
 
 
@@ -126,12 +120,12 @@ instance Functor (HueIteration state response) where
 
 instance Applicative (HueIteration state response) where
   pure = HueIteration (HueIterationData [] [])
-  HueIteration hueIterationData functionResult <*> iteration = hueIteration
+  HueIteration givenHueIterationData functionResult <*> iteration = hueIteration
     where
       newHueIteration = fmap functionResult iteration
-      newHueIterationData = hueGetIterationData newHueIteration
-      newHueIterationResult = hueGetIterationResult newHueIteration
-      joinedHueIterationData = hueJoinIterationData hueIterationData newHueIterationData
+      newHueIterationData = hueIterationData newHueIteration
+      newHueIterationResult = hueIterationResult newHueIteration
+      joinedHueIterationData = hueJoinIterationData givenHueIterationData newHueIterationData
       hueIteration = HueIteration joinedHueIterationData newHueIterationResult
 
 
