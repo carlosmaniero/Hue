@@ -4,21 +4,17 @@ import Hue.Context
 import Hue.Iteration
 import Test.Hspec
 
-
 data Msg = MyCoolMsg | ChangedMsg Int
   deriving (Show, Eq)
-
 
 data State =
   State { anyNumber :: Int
         , anyString :: String }
   deriving (Show, Eq)
 
-
 updater :: HueIterationUpdater Msg String State
 updater _ state _ =
   return state
-
 
 hueIterationSpec :: SpecWith ()
 hueIterationSpec =
@@ -32,14 +28,23 @@ hueIterationSpec =
     let ioOperation1 = do
           return (42, "The answer")
     let ioOperation2 = do
-          return "I don't know the answer"
+          return "Tell me why I don't like Mondays."
 
+    describe "Checking the given update arguments" $
+      it "should receive the given state and message" $ do
+        let iterationResult = performUpdate $ \_ currentState currentMsg ->
+              if currentState == givenState && currentMsg == givenMsg
+                 then return $ State 1 "ok"
+              else return $ State 0 "The state or msg is not the given"
+        hueIterationStateResult iterationResult `shouldBe` State 1 "ok"
     describe "Changing state" $ do
       describe "When I perform a change state operation" $ do
         let iterationResult = performUpdate $ \_ currentState _ -> do
               return currentState { anyString = "here" }
         it "should return a new Monad with the new state" $ do
           hueIterationStateResult iterationResult `shouldBe` State 0 "here"
+          length (hueIterationTasksResult iterationResult) `shouldBe` 0
+          length (hueIterationResponsesResult iterationResult) `shouldBe` 0
       describe "when I perform the change state action many times" $ do
         let iterationResult = performUpdate $ \_ currentState _ -> do
               newCurrentState <- return $ currentState { anyNumber = 42 }
@@ -74,6 +79,17 @@ hueIterationSpec =
           hueIterationStateResult (hueIterationToResult ioIterationResult1) `shouldBe` State 42 "The answer"
           let ioIterationResult2 = task2 givenState
           hueIterationStateResult (hueIterationToResult ioIterationResult2) `shouldBe` State (-1) "I don't know the answer"
+      describe "When I call a task providing an state" $ do
+        let ioOperation = return "The answer"
+        let iterationResult = performUpdate $ \_ currentState _ -> do
+              huePerformTask ioOperation $ \newCurrentState _ -> do
+                return newCurrentState
+              return $ currentState
+        it "should receive the given state" $ do
+          let task = head $ hueIterationTasksResult iterationResult
+          ioIterationTask <- task
+          let ioIterationResult = ioIterationTask $ State 1 "My given state"
+          hueIterationStateResult (hueIterationToResult ioIterationResult) `shouldBe` State 1 "My given state"
     describe "Responding to the context" $ do
       describe "When I perform the respond operation to the given context" $ do
         let iterationResult = performUpdate $ \resolver _ _ -> do
