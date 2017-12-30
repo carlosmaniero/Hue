@@ -39,44 +39,70 @@ type HueResolver state response = response -> HueIteration state response ()
 type HueIterationUpdater msg response state =
   HueResolver state response -> state -> msg -> HueStateIteration state response
 
--- The `HueIterationTask` encapsulates inside the `IO` Monad a function that receive
+-- |The `HueIterationTask` encapsulates inside the `IO` Monad a function that receive
 -- an updated version of the application state and returns a new HueStateIterataion.
 -- It is created by the `huePerformTask`.
 type HueIterationTask state response = IO (state -> HueStateIteration state response)
 
--- This type contains a context and the context response
+-- |This type contains a context and the context response
 type HueIterationResponse response = (HueContext, response)
 
--- The `HueIterationData` contains information that should be passed for each monad
+-- |The `HueIterationData` contains information that should be passed for each monad
 -- binding.
 data HueIterationData state response = HueIterationData
             { hueIterationTasks :: [HueIterationTask state response]
             , hueIterationResponses :: [HueIterationResponse response]
             }
 
--- This function receive two `HueIterationData` and create a new joining their data.
+-- |This function receive two `HueIterationData` and create a new joining their data.
 hueJoinIterationData :: HueIterationData state response -> HueIterationData state response -> HueIterationData state response
 hueJoinIterationData iterationA iterationB = HueIterationData tasks responses
   where
     tasks = (hueIterationTasks iterationA) ++ (hueIterationTasks iterationB)
     responses = (hueIterationResponses iterationA) ++ (hueIterationResponses iterationB)
 
--- Return the `HueIterationData` of an `HueIteration`
+-- |Return the `HueIterationData` of an `HueIteration`
 hueGetIterationData :: HueIteration state response result -> HueIterationData state response
 hueGetIterationData (HueOperation iterationData _) = iterationData
 hueGetIterationData _ = HueIterationData [] []
 
--- "Unbox" the `result` of the `HueIteration` monad.
+-- |"Unbox" the `result` of the `HueIteration` monad.
 hueGetIterationResult :: HueIteration state response result -> result
 hueGetIterationResult (HueResult result) = result
 hueGetIterationResult (HueOperation _ result) = result
 
-
+-- |`HueIteration` is a type that orchestrates the state and the response is commonly used
+-- as `HueStateIteration`.
+-- It is a polyphoric type that has the `state`, `response` and `result` as flexible types.
 data HueIteration state response result
+  -- |HueOperation has a `HueIterationData` and a result (commonly defined as `()`) when `>>=`
+  -- to another `HueOperation` a new `HueOperation` is created with a join of their `HueIterationData`.
   = HueOperation (HueIterationData state response) result
+  -- |It's used in `return` at the `Applicative` instance.
   | HueResult result
 
 
+-- |Register an `IO` operation to performed. It receives the `IO` operation and a callback function that
+-- returns a `HueStateIteration`.
+--
+-- The callback function must receive the `IO` operation result and the updated state of the application.
+--
+-- The state is provided by the `Hue` loop (TODO: link the Hue loop here). It is necessary because the
+-- `IO` operation will run in parallel and is possible that the state provided in the `updater` function
+-- was outdated.
+--
+-- Simple example:
+--
+-- @
+-- huePerformTask getLine \result newState -> return result
+-- @
+--
+-- In this example, the state is a `String` and when the `getLine` is completed, the callback function will
+-- be called with the inserted text in the `stdin` as `result` and the callback return the given `result`.
+-- That is, the next iteration in the `updater` function will be performed with the text provided by the
+-- `getLine`.
+--
+-- The `IO` operation will be performed in parallel and the callback concurrently.
 huePerformTask
   :: IO result
   -> (state -> result -> HueStateIteration state response)
@@ -89,10 +115,12 @@ huePerformTask ioOperation callback =
       return $ \state -> callback state result
     hueIterationData = HueIterationData [task] []
 
-hueRespond :: HueContext -> response -> HueIteration state response ()
+-- |This function is used to generate a `HueResolver` given a `HueContext`.
+hueRespond :: HueContext -> HueResolver state response
 hueRespond context response =
   HueOperation (HueIterationData [] [(context, response)]) ()
 
+-- |The `fmap` function follows the monad `>>=` behavior.
 instance Functor (HueIteration state response) where
   fmap f operation = do
     result <- operation
@@ -111,6 +139,13 @@ instance Applicative (HueIteration state response) where
       hueIteration = HueOperation joinedHueIterationData newHueIterationResult
 
 
+-- |The main role of the `HueIteration` monad is to keep the `HueIterationData` at each
+-- bind (`>>=`).
+--
+-- This monad always gets the `HueIterationData` from the previous and current `HueIteration`
+-- and join both inside a new `HueOperation` making a easy way to perform multiples tasks
+-- using the `huePerformTask`, resolve many requests using the `HueResolver` and return a
+-- new state using the `HueResult` or the `return` function.
 instance Monad (HueIteration state response) where
   HueResult result >>= f = f result
   HueOperation iterationData result >>= f =
@@ -121,15 +156,21 @@ instance Monad (HueIteration state response) where
         HueOperation (hueJoinIterationData iterationData newIterationData) newResult
 
 
+-- |This is the result representation of an `HueStateIteration`. It contains basically the same
+-- information of the `HueIterationData` it only adds the `husIterationStateResult` that contains
+-- The final state of the `HueStateIteration`.
 data HueIterationResult state response = HueIterationResult { hueIterationStateResult :: state
                                                             , hueIterationTasksResult :: [HueIterationTask state response]
                                                             , hueIterationResponsesResult :: [HueIterationResponse response]}
 
-
+-- |Convert a given `HueStateIteration` in a `HueIterationResult`
 hueIterationToResult :: HueStateIteration state response -> HueIterationResult state response
 hueIterationToResult (HueResult state) = HueIterationResult state [] []
 hueIterationToResult (HueOperation iterationData state) = HueIterationResult state (hueIterationTasks iterationData) (hueIterationResponses iterationData)
 
+-- |The `huePerformIteration` is used to call the `HueIterationUpdater` with the correct data.
+-- It is a useful function to make your unit tests. You can see some examples in the
+-- test/unit/HueIterationSpec.hs file.
 huePerformIteration :: HueContext -> state -> msg -> HueIterationUpdater msg response state -> HueIterationResult state response
 huePerformIteration context state msg updater =
   hueIterationToResult $ updater (hueRespond context) state msg
