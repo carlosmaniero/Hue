@@ -16,7 +16,7 @@ data State =
 
 
 updater :: HueIterationUpdater Msg String State
-updater context state msg =
+updater _ state _ =
   return state
 
 
@@ -36,22 +36,22 @@ hueIterationSpec =
 
     describe "Changing state" $ do
       describe "When I perform a change state operation" $ do
-        let iterationResult = performUpdate $ \resolver currentState currentMsg -> do
+        let iterationResult = performUpdate $ \_ currentState _ -> do
               return currentState { anyString = "here" }
         it "should return a new Monad with the new state" $ do
           hueIterationStateResult iterationResult `shouldBe` State 0 "here"
       describe "when I perform the change state action many times" $ do
-        let iterationResult = performUpdate $ \resolver currentState currentMsg -> do
-              currentState <- return $ currentState { anyNumber = 42 }
-              return currentState { anyString = "here" }
+        let iterationResult = performUpdate $ \_ currentState _ -> do
+              newCurrentState <- return $ currentState { anyNumber = 42 }
+              return newCurrentState { anyString = "here" }
         it "should return the last state" $ do
           hueIterationStateResult iterationResult `shouldBe` State 42 "here"
     describe "Performing an IO iteration" $ do
       describe "When I perform an IO operation" $ do
         let ioOperation = do
               return (42, "The answer")
-        let iterationResult = performUpdate $ \resolver currentState currentMsg -> do
-              huePerformTask ioOperation $ \currentState (number, text) -> do
+        let iterationResult = performUpdate $ \_ currentState _ -> do
+              huePerformTask ioOperation $ \_ (number, text) -> do
                 return $ State number text
               return $ currentState
         it "Should register the given task" $ do
@@ -60,11 +60,11 @@ hueIterationSpec =
           let ioIterationResult = ioIterationTask givenState
           hueIterationStateResult (hueIterationToResult ioIterationResult) `shouldBe` State 42 "The answer"
       describe "Given many IO operations" $ do
-        let iterationResult = performUpdate $ \resolver currentState currentMsg -> do
-              huePerformTask ioOperation1 $ \currentState (number, text) -> do
+        let iterationResult = performUpdate $ \_ currentState _ -> do
+              huePerformTask ioOperation1 $ \_ (number, text) -> do
                 return $ State number text
-              return "any thing that between the tasks"
-              huePerformTask ioOperation2 $ \currentState text -> do
+              _ <- return "any thing that between the tasks"
+              huePerformTask ioOperation2 $ \_ text -> do
                 return $ State (-1) text
               return $ currentState
         it "Should register the given tasks" $ do
@@ -76,7 +76,7 @@ hueIterationSpec =
           hueIterationStateResult (hueIterationToResult ioIterationResult2) `shouldBe` State (-1) "I don't know the answer"
     describe "Responding to the context" $ do
       describe "When I perform the respond operation to the given context" $ do
-        let iterationResult = performUpdate $ \resolver currentState currentMsg -> do
+        let iterationResult = performUpdate $ \resolver _ _ -> do
               resolver "Pong"
               return $ State 42 "OK"
         it "should register the context response" $ do
@@ -85,12 +85,12 @@ hueIterationSpec =
           snd response `shouldBe` "Pong"
     describe "Performing many operations" $ do
       describe "When I perform many and different operations" $ do
-        let iterationResult = performUpdate $ \resolver currentState currentMsg -> do
-              huePerformTask ioOperation1 $ \currentState (number, text) -> do
+        let iterationResult = performUpdate $ \resolver _ _ -> do
+              huePerformTask ioOperation1 $ \_ (number, text) -> do
                 return $ State number text
-              return "any thing that between the tasks"
+              _ <- return "any thing that between the tasks"
               resolver "OK"
-              huePerformTask ioOperation2 $ \currentState text -> do
+              huePerformTask ioOperation2 $ \_ text -> do
                 return $ State (-1) text
               return $ State 31 "All done"
         it "Should register all tasks and responses correctly" $ do
