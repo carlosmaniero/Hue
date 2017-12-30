@@ -12,10 +12,6 @@ data State =
         , anyString :: String }
   deriving (Show, Eq)
 
-updater :: HueIterationUpdater Msg String State
-updater _ state _ =
-  return state
-
 hueIterationSpec :: SpecWith ()
 hueIterationSpec =
   describe "Given a context and a state message" $ do
@@ -23,12 +19,12 @@ hueIterationSpec =
     let givenState = State { anyNumber = 0, anyString = "Any String"}
     let givenMsg = MyCoolMsg
 
-    let performUpdate = huePerformIteration givenContext givenState givenMsg
-
     let ioOperation1 = do
           return (42, "The answer")
     let ioOperation2 = do
           return "Tell me why I don't like Mondays."
+
+    let performUpdate = huePerformIteration givenContext givenState givenMsg
 
     describe "Checking the given update arguments" $
       it "should receive the given state and message" $ do
@@ -78,7 +74,7 @@ hueIterationSpec =
           let ioIterationResult1 = task1 givenState
           hueIterationStateResult (hueIterationToResult ioIterationResult1) `shouldBe` State 42 "The answer"
           let ioIterationResult2 = task2 givenState
-          hueIterationStateResult (hueIterationToResult ioIterationResult2) `shouldBe` State (-1) "I don't know the answer"
+          hueIterationStateResult (hueIterationToResult ioIterationResult2) `shouldBe` State (-1) "Tell me why I don't like Mondays."
       describe "When I call a task providing an state" $ do
         let ioOperation = return "The answer"
         let iterationResult = performUpdate $ \_ currentState _ -> do
@@ -113,3 +109,29 @@ hueIterationSpec =
           length (hueIterationTasksResult iterationResult) `shouldBe` 2
           length (hueIterationResponsesResult iterationResult) `shouldBe` 1
           hueIterationStateResult iterationResult `shouldBe` State 31 "All done"
+    describe "Using the HueIteration as a Applicative" $ do
+      describe "When I do a sequence application" $ do
+        describe "And it's a identity application" $ do
+          let iterationResult = pure id <*> HueIteration (HueIterationData [] []) "Hi"
+
+          it "should return the same result and the data constructor should be HueIteration" $
+            case iterationResult of
+              HueIteration iterationData result -> do
+                result `shouldBe` "Hi"
+                length (hueIterationTasks iterationData) `shouldBe` 0
+        describe "And both has iteration tasks" $ do
+          let functionIteration = do
+                huePerformTask ioOperation1 $ \state _ -> return state
+                huePerformTask ioOperation1 $ \state _ -> return state
+                return id
+          let anotherIteration = do
+                huePerformTask ioOperation1 $ \state _ -> return state
+                huePerformTask ioOperation1 $ \state _ -> return state
+                return $ State 42 "All fine"
+          let iterationResult = functionIteration <*> anotherIteration
+
+          it "should return the same result with both iteration data" $ do
+            case iterationResult of
+              HueIteration iterationData result -> do
+                result `shouldBe` (State 42 "All fine")
+                length (hueIterationTasks iterationData) `shouldBe` 4
