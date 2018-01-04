@@ -113,6 +113,12 @@ process ioOperation callback =
       return $ \state -> callback state result
     newIterationData = IterationData [task] []
 
+
+-- | A version of process without callback, that is, it ignore the result of the `IO` operation
+process_ :: IO result -> Iteration state response ()
+process_ ioOperation = process ioOperation $ \state _ -> return state
+
+
 -- |This function is used to generate a `Resolver` given a `Context`.
 respond :: Context -> Resolver state response
 respond context response =
@@ -123,7 +129,6 @@ instance Functor (Iteration state response) where
   fmap f operation = do
     result <- operation
     return (f result)
-
 
 instance Applicative (Iteration state response) where
   pure = Iteration (IterationData [] [])

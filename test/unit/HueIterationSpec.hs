@@ -54,6 +54,15 @@ hueIterationSpec =
           ioIterationTask <- task
           let ioIterationResult = ioIterationTask givenState
           iterationStateResult (iterationToResult ioIterationResult) `shouldBe` State 42 "The answer"
+      describe "Ignoring the result" $ do
+        let iteration = performUpdate $ \_ currentState _ -> do
+              process_ (return ())
+              return currentState
+        it "should return the state without changes" $ do
+          let task = head (iterationTasksResult iteration)
+          ioIterationTask <- task
+          let ioIterationResult = ioIterationTask givenState
+          iterationStateResult (iterationToResult ioIterationResult) `shouldBe` State 0 "Any String"
       describe "Given many IO operations" $ do
         let iteration = performUpdate $ \_ currentState _ -> do
               process ioOperation1 $ \_ (number, text) ->
