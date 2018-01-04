@@ -1,6 +1,6 @@
 module Hue.Context
-    ( HueContext(..) ) where
+    ( Context(..) ) where
 
-newtype HueContext =
-  HueContext { hueContextId :: Int
-             } deriving (Show, Eq)
+newtype Context =
+  Context { contextId :: Int
+          } deriving (Show, Eq)

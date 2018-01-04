@@ -11,107 +11,107 @@ import Control.Exception
 -- a state as argument and return a new state iteration.
 --
 -- This mechanism is created by the `huePerformTask`.
-type HueTaskIteration state response = state -> HueStateIteration state response
+type TaskIteration state response = state -> StateIteration state response
 
 -- | This is the channel that tasks uses to communicate with its caller loop (`rueRunner`).
-type HueIterationRunnerChannel state response = MVar (HueIterationRunnerMsgs state response)
+type IterationRunnerChannel state response = MVar (IterationRunnerMsgs state response)
 
 -- | It contain the internal messages that tasks uses to communicate with
--- its caller loop (`hueRunner`).
-data HueIterationRunnerMsgs state response
+-- its caller loop (`runner`).
+data IterationRunnerMsgs state response
   -- | Used to start a new task.
-  = HueStartTask (HueTaskIteration state response)
-  -- | Used when the IO operation was successfully performed and a `HueStateIteration`
+  = StartTask (TaskIteration state response)
+  -- | Used when the IO operation was successfully performed and a `StateIteration`
   -- is waiting for processing.
-  | HueNewIteration ThreadId (HueTaskIteration state response)
+  | NewIteration ThreadId (TaskIteration state response)
   -- | Used when for some reason the IO operation is died.
-  | HueTaskIterationDead ThreadId SomeException
+  | TaskIterationDead ThreadId SomeException
   -- | Used by the `hueStop` to stop the loop execution.
-  | HueStop
+  | StopRunner
 
 
--- | The result of the `hueRun` loop. Each result return the last updated state.
-data HueRunnerResult state
+-- | The result of the `run` loop. Each result return the last updated state.
+data RunnerResult state
   -- | Yes! all tasks were performed and this is the final state
-  = HueFinished state
+  = Finished state
   -- | You stopped the loop and this is the last version of the state
-  | HueStopped state
+  | Stopped state
 
 
--- | It starts a `HueIterationTask` in a new thread and respond for the `hueRun`
+-- | It starts a `IterationTask` in a new thread and respond for the `run`
 -- the result through the given channel.
-hueStartTask
-  :: HueIterationRunnerChannel state response
-  -> HueIterationTask state response
+startTask
+  :: IterationRunnerChannel state response
+  -> IterationTask state response
   -> IO ThreadId
-hueStartTask channel ioTask = forkIO $ do
+startTask channel ioTask = forkIO $ do
     taskResult <- try ioTask
     threadId <- myThreadId
     case taskResult of
       Right task ->
-        putMVar channel (HueNewIteration threadId task)
+        putMVar channel (NewIteration threadId task)
       Left e ->
-        putMVar channel (HueTaskIterationDead threadId e)
+        putMVar channel (TaskIterationDead threadId e)
     return ()
 
 
 -- | It is the runner representation. Thought this you can stop
--- the execution using the `hueStop` and wait for the result state using
--- the `hueWait`.
+-- the execution using the `stop` and wait for the result state using
+-- the `wait`.
 --
--- Note: When the `hueStop` is called `hueRun` will kill all threads that
+-- Note: When the `stop` is called `run` will kill all threads that
 -- it started.
-data HueRunner state = HueRunner { hueStop :: IO ()
-                                 , hueWait :: IO (HueRunnerResult state) }
-
-hueNextIteration
+data Runner state = Runner { stop :: IO ()
+                           , wait :: IO (RunnerResult state) }
+  
+nextRunIteration
   :: state
-  -> HueIterationRunnerChannel state response
+  -> IterationRunnerChannel state response
   -> [ThreadId]
-  -> IO (HueRunnerResult state)
-hueNextIteration newState channel tasksRunning = do
+  -> IO (RunnerResult state)
+nextRunIteration newState channel tasksRunning = do
   let newTasksRunning = tasksRunning
   if null newTasksRunning then
-    return (HueFinished newState)
-  else hueRun newTasksRunning channel newState
+    return (Finished newState)
+  else run newTasksRunning channel newState
 
 
--- | The main loop that control the execution of of the `HueTaskIteration`.
+-- | The main loop that control the execution of of the `TaskIteration`.
 -- It will perform the given task all its nested tasks and return an updated result.
-hueRun :: [ThreadId] -> HueIterationRunnerChannel state response -> state -> IO (HueRunnerResult state)
-hueRun tasksRunning channel state = do
+run :: [ThreadId] -> IterationRunnerChannel state response -> state -> IO (RunnerResult state)
+run tasksRunning channel state = do
   result <- takeMVar channel
   case result of
-    (HueStartTask task) -> do
-      let (HueIteration iterationData newState) = task state
-      let tasks = hueIterationTasks iterationData
-      newTasksId <- mapM (hueStartTask channel) tasks
-      hueNextIteration newState channel (tasksRunning ++ newTasksId)
-    (HueNewIteration threadId task) -> do
-      let (HueIteration iterationData newState) = task state
-      let tasks = hueIterationTasks iterationData
-      newTasksId <- mapM (hueStartTask channel) tasks
+    (StartTask task) -> do
+      let (Iteration newData newState) = task state
+      let tasks = iterationTasks newData
+      newTasksId <- mapM (startTask channel) tasks
+      nextRunIteration newState channel (tasksRunning ++ newTasksId)
+    (NewIteration threadId task) -> do
+      let (Iteration newData newState) = task state
+      let tasks = iterationTasks newData
+      newTasksId <- mapM (startTask channel) tasks
       let newTasksRunning = filter (/= threadId) (tasksRunning ++ newTasksId)
-      hueNextIteration newState channel newTasksRunning
-    (HueTaskIterationDead threadId _) -> do
+      nextRunIteration newState channel newTasksRunning
+    (TaskIterationDead threadId _) -> do
       let newTasksRunning = filter (/= threadId) tasksRunning
-      hueNextIteration state channel newTasksRunning
-    HueStop -> do
+      nextRunIteration state channel newTasksRunning
+    StopRunner -> do
       mapM_ killThread tasksRunning
-      return (HueStopped state)
+      return (Stopped state)
 
 
--- | Start the iteration and return a `HueRunner` where is possible to control the
+-- | Start the iteration and return a `Runner` where is possible to control the
 -- execution and get its result.
-hueStartIteration :: (HueTaskIteration state response) -> state -> IO (HueRunner state)
-hueStartIteration task state = do
-  channel <- newMVar (HueStartTask task)
+startIteration :: (TaskIteration state response) -> state -> IO (Runner state)
+startIteration task state = do
+  channel <- newMVar (StartTask task)
   channelState <- newEmptyMVar
   _ <- forkIO $ do
-    result <- hueRun [] channel state
+    result <- run [] channel state
     putMVar channelState result
 
-  return (HueRunner
-           (putMVar channel HueStop)
+  return (Runner
+           (putMVar channel StopRunner)
            (readMVar channelState))
 

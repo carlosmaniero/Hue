@@ -2,16 +2,16 @@ module Hue.Iteration where
 
 import Hue.Context
 
--- |The `HueStateIteration` is a kind of `HueIteration` monad that has as result a state
-type HueStateIteration state response = HueIteration state response state
+-- |The `StateIteration` is a kind of `Iteration` monad that has as result a state
+type StateIteration state response = Iteration state response state
 
--- |The `HueResolver` type is used to represent the `hueRespond` with a `HueContext`.
+-- |The `Resolver` type is used to represent the `respond` with a `Context`.
 --
--- This is the first argument of a `HueIterationUpdater` and is used to respond
--- to the `hueDispath` caller.
-type HueResolver state response = response -> HueIteration state response ()
+-- This is the first argument of a `IterationUpdater` and is used to respond
+-- to the `dispatch` caller.
+type Resolver state response = response -> Iteration state response ()
 
--- |The `HueIterationUpdater` is a function defined to update a given state.
+-- |The `IterationUpdater` is a function defined to update a given state.
 -- It takes three arguments the `resolver`, the `msg` and the `state`.
 -- Where `msg` is the message used to verify what kind of update should be performed.
 --
@@ -22,7 +22,7 @@ type HueResolver state response = response -> HueIteration state response ()
 --
 --   type State = Int
 --
---   updater :: HueIterationUpdater Msg Response State
+--   updater :: IterationUpdater Msg Response State
 --   updater resolver state msg = do
 --     let result =
 --       case msg of
@@ -36,63 +36,63 @@ type HueResolver state response = response -> HueIteration state response ()
 --
 -- The returned state will be passed as argument in the next update call and the
 -- `resolver` acts like a Javascript Promise, that is, it will send the given `Response`
--- to the update caller. You should see how it works in the `hueDispatch` documentation.
-type HueIterationUpdater msg response state =
-  HueResolver state response -> state -> msg -> HueStateIteration state response
+-- to the update caller. You should see how it works in the `dispatch` documentation.
+type IterationUpdater msg response state =
+  Resolver state response -> state -> msg -> StateIteration state response
 
--- |The `HueIterationTask` is an `IO` operation that returns a function that receive
--- an updated version of the application state and returns a new `HueStateIteration`.
+-- |The `IterationTask` is an `IO` operation that returns a function that receive
+-- an updated version of the application state and returns a new `StateIteration`.
 --
--- It is created by the `huePerformTask`.
+-- It is created by the `process`.
 --
--- This is used to inside the `HueIterationData` in the `HueIteration` to represent
+-- This is used to inside the `IterationData` in the `Iteration` to represent
 -- An `IO` operation that should be performed and when it was completely performed
 -- it should perform a new iteration.
-type HueIterationTask state response = IO (state -> HueStateIteration state response)
+type IterationTask state response = IO (state -> StateIteration state response)
 
 -- |This type contains a context and it given reponse.
 --
--- As the `HueIterationTask` this is also used inside the `HueIterationData` in the
--- `HueIteration`.
-type HueIterationResponse response = (HueContext, response)
+-- As the `IterationTask` this is also used inside the `IterationData` in the
+-- `Iteration`.
+type IterationResponse response = (Context, response)
 
--- |The `HueIterationData` contains information that should be passed for each monad
+-- |The `IterationData` contains information that should be passed for each monad
 -- binding.
-data HueIterationData state response = HueIterationData
-            { hueIterationTasks :: [HueIterationTask state response]
-            , hueIterationResponses :: [HueIterationResponse response]
+data IterationData state response = IterationData
+            { iterationTasks :: [IterationTask state response]
+            , iterationResponses :: [IterationResponse response]
             }
 
--- |This function receive two `HueIterationData` and create a new joining their data.
-hueJoinIterationData :: HueIterationData state response -> HueIterationData state response -> HueIterationData state response
-hueJoinIterationData iterationA iterationB = HueIterationData tasks responses
+-- |This function receive two `IterationData` and create a new joining their data.
+joinIterationData :: IterationData state response -> IterationData state response -> IterationData state response
+joinIterationData iterationA iterationB = IterationData tasks responses
   where
-    tasks = (hueIterationTasks iterationA) ++ (hueIterationTasks iterationB)
-    responses = (hueIterationResponses iterationA) ++ (hueIterationResponses iterationB)
+    tasks = iterationTasks iterationA ++ iterationTasks iterationB
+    responses = iterationResponses iterationA ++ iterationResponses iterationB
 
--- |`HueIteration` is a type that orchestrates the state and the response is commonly used
--- as `HueStateIteration`.
+-- |`Iteration` is a type that orchestrates the state and the response is commonly used
+-- as `StateIteration`.
 -- It is a polyphoric type that has the `state`, `response` and `result` as flexible types.
-data HueIteration state response result
-  -- |HueIteration has a `HueIterationData` and a result (commonly defined as `()`) when `>>=`
-  -- to another `HueIteration` a new `HueIteration` is created with a join of their `HueIterationData`.
-  = HueIteration { hueIterationData :: (HueIterationData state response)
-                 , hueIterationResult :: result
-                 }
+data Iteration state response result
+  -- |Iteration has a `IterationData` and a result (commonly defined as `()`) when `>>=`
+  -- to another `Iteration` a new `Iteration` is created with a join of their `IterationData`.
+  = Iteration { iterationData :: IterationData state response
+              , iterationResult :: result
+              }
 
 -- |Register an `IO` operation to performed. It receives the `IO` operation and a callback function that
--- returns a `HueStateIteration`.
+-- returns a `StateIteration`.
 --
 -- The callback function must receive the `IO` operation result and the updated state of the application.
 --
--- The state is provided by the `Hue` loop (TODO: link the Hue loop here). It is necessary because the
+-- The state is provided by the `` loop (TODO: link the  loop here). It is necessary because the
 -- `IO` operation will run in parallel and is possible that the state provided in the `updater` function
 -- was outdated.
 --
 -- Simple example:
 --
 -- @
--- huePerformTask getLine \result newState -> return result
+-- process getLine \result newState -> return result
 -- @
 --
 -- In this example, the state is a `String` and when the `getLine` is completed, the callback function will
@@ -101,70 +101,70 @@ data HueIteration state response result
 -- `getLine`.
 --
 -- The `IO` operation will be performed in parallel and the callback concurrently.
-huePerformTask
+process
   :: IO result
-  -> (state -> result -> HueStateIteration state response)
-  -> HueIteration state response ()
-huePerformTask ioOperation callback =
-  HueIteration iterationData ()
+  -> (state -> result -> StateIteration state response)
+  -> Iteration state response ()
+process ioOperation callback =
+  Iteration newIterationData ()
   where
     task = do
       result <- ioOperation
       return $ \state -> callback state result
-    iterationData = HueIterationData [task] []
+    newIterationData = IterationData [task] []
 
--- |This function is used to generate a `HueResolver` given a `HueContext`.
-hueRespond :: HueContext -> HueResolver state response
-hueRespond context response =
-  HueIteration (HueIterationData [] [(context, response)]) ()
+-- |This function is used to generate a `Resolver` given a `Context`.
+respond :: Context -> Resolver state response
+respond context response =
+  Iteration (IterationData [] [(context, response)]) ()
 
 -- |The `fmap` function follows the monad `>>=` behavior.
-instance Functor (HueIteration state response) where
+instance Functor (Iteration state response) where
   fmap f operation = do
     result <- operation
     return (f result)
 
 
-instance Applicative (HueIteration state response) where
-  pure = HueIteration (HueIterationData [] [])
-  HueIteration givenHueIterationData functionResult <*> iteration = hueIteration
+instance Applicative (Iteration state response) where
+  pure = Iteration (IterationData [] [])
+  Iteration givenIterationData functionResult <*> iteration = joinedIteration
     where
-      newHueIteration = fmap functionResult iteration
-      newHueIterationData = hueIterationData newHueIteration
-      newHueIterationResult = hueIterationResult newHueIteration
-      joinedHueIterationData = hueJoinIterationData givenHueIterationData newHueIterationData
-      hueIteration = HueIteration joinedHueIterationData newHueIterationResult
+      newIteration = fmap functionResult iteration
+      newIterationData = iterationData newIteration
+      newIterationResult = iterationResult newIteration
+      joinedIterationData = joinIterationData givenIterationData newIterationData
+      joinedIteration= Iteration joinedIterationData newIterationResult
 
 
--- |The main role of the `HueIteration` monad is to keep the `HueIterationData` at each
+-- |The main role of the `Iteration` monad is to keep the `IterationData` at each
 -- bind (`>>=`).
 --
--- This monad always gets the `HueIterationData` from the previous and current `HueIteration`
--- and join both inside a new `HueIteration` making a easy way to perform multiples tasks
--- using the `huePerformTask`, resolve many requests using the `HueResolver` and return a
+-- This monad always gets the `IterationData` from the previous and current `Iteration`
+-- and join both inside a new `Iteration` making a easy way to perform multiples tasks
+-- using the `process`, resolve many requests using the `Resolver` and return a
 -- new state using the `return` function.
-instance Monad (HueIteration state response) where
-  HueIteration iterationData result >>= f =
-    HueIteration (hueJoinIterationData iterationData newIterationData) newResult
-      where (HueIteration newIterationData newResult) = f result
+instance Monad (Iteration state response) where
+  Iteration currentIterationData result >>= f =
+    Iteration (joinIterationData currentIterationData newIterationData) newResult
+      where (Iteration newIterationData newResult) = f result
 
 
--- |This is the result representation of an `HueStateIteration`. It contains basically the same
--- information of the `HueIterationData` it only adds the `husIterationStateResult` that contains
--- The final state of the `HueStateIteration`.
-data HueIterationResult state response =
-  HueIterationResult { hueIterationStateResult :: state
-                     , hueIterationTasksResult :: [HueIterationTask state response]
-                     , hueIterationResponsesResult :: [HueIterationResponse response]}
+-- |This is the result representation of an `StateIteration`. It contains basically the same
+-- information of the `IterationData` it only adds the `husIterationStateResult` that contains
+-- The final state of the `StateIteration`.
+data IterationResult state response =
+  IterationResult { iterationStateResult :: state
+                  , iterationTasksResult :: [IterationTask state response]
+                  , iterationResponsesResult :: [IterationResponse response]}
 
--- |Convert a given `HueStateIteration` in a `HueIterationResult`
-hueIterationToResult :: HueStateIteration state response -> HueIterationResult state response
-hueIterationToResult (HueIteration iterationData state) =
-  HueIterationResult state (hueIterationTasks iterationData) (hueIterationResponses iterationData)
+-- |Convert a given `StateIteration` in a `IterationResult`
+iterationToResult :: StateIteration state response -> IterationResult state response
+iterationToResult (Iteration currentIterationData state) =
+  IterationResult state (iterationTasks currentIterationData) (iterationResponses currentIterationData)
 
--- |The `huePerformIteration` is used to call the `HueIterationUpdater` with the correct data.
+-- |The `performIteration` is used to call the `IterationUpdater` with the correct data.
 -- It is a useful function to make your unit tests. You can see some examples in the
--- test/unit/HueIterationSpec.hs file.
-huePerformIteration :: HueContext -> state -> msg -> HueIterationUpdater msg response state -> HueIterationResult state response
-huePerformIteration context state msg updater =
-  hueIterationToResult $ updater (hueRespond context) state msg
+-- test/unit/IterationSpec.hs file.
+performIteration :: Context -> state -> msg -> IterationUpdater msg response state -> IterationResult state response
+performIteration context state msg updater =
+  iterationToResult $ updater (respond context) state msg

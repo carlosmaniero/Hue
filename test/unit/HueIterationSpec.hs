@@ -15,120 +15,114 @@ data State =
 hueIterationSpec :: SpecWith ()
 hueIterationSpec =
   describe "Given a context and a state message" $ do
-    let givenContext = HueContext { hueContextId = 1 }
+    let givenContext = Context { contextId = 1 }
     let givenState = State { anyNumber = 0, anyString = "Any String"}
     let givenMsg = MyCoolMsg
 
-    let ioOperation1 = do
+    let ioOperation1 =
           return (42, "The answer")
-    let ioOperation2 = do
+    let ioOperation2 =
           return "Tell me why I don't like Mondays."
 
-    let performUpdate = huePerformIteration givenContext givenState givenMsg
+    let performUpdate = performIteration givenContext givenState givenMsg
 
     describe "Checking the given update arguments" $
       it "should receive the given state and message" $ do
-        let iterationResult = performUpdate $ \_ currentState currentMsg ->
+        let iteration = performUpdate $ \_ currentState currentMsg ->
               if currentState == givenState && currentMsg == givenMsg
                  then return $ State 1 "ok"
               else return $ State 0 "The state or msg is not the given"
-        hueIterationStateResult iterationResult `shouldBe` State 1 "ok"
-    describe "Changing state" $ do
+        iterationStateResult iteration `shouldBe` State 1 "ok"
+    describe "Changing state" $
       describe "When I perform a change state operation" $ do
-        let iterationResult = performUpdate $ \_ currentState _ -> do
+        let iteration = performUpdate $ \_ currentState _ ->
               return currentState { anyString = "here" }
         it "should return a new Monad with the new state" $ do
-          hueIterationStateResult iterationResult `shouldBe` State 0 "here"
-          length (hueIterationTasksResult iterationResult) `shouldBe` 0
-          length (hueIterationResponsesResult iterationResult) `shouldBe` 0
-      describe "when I perform the change state action many times" $ do
-        let iterationResult = performUpdate $ \_ currentState _ -> do
-              newCurrentState <- return $ currentState { anyNumber = 42 }
-              return newCurrentState { anyString = "here" }
-        it "should return the last state" $ do
-          hueIterationStateResult iterationResult `shouldBe` State 42 "here"
+          iterationStateResult iteration `shouldBe` State 0 "here"
+          length (iterationTasksResult iteration) `shouldBe` 0
+          length (iterationResponsesResult iteration) `shouldBe` 0
     describe "Performing an IO iteration" $ do
       describe "When I perform an IO operation" $ do
-        let ioOperation = do
+        let ioOperation =
               return (42, "The answer")
-        let iterationResult = performUpdate $ \_ currentState _ -> do
-              huePerformTask ioOperation $ \_ (number, text) -> do
+        let iteration = performUpdate $ \_ currentState _ -> do
+              process ioOperation $ \_ (number, text) ->
                 return $ State number text
-              return $ currentState
+              return currentState
         it "Should register the given task" $ do
-          let task = head $ hueIterationTasksResult iterationResult
+          let task = head $ iterationTasksResult iteration
           ioIterationTask <- task
           let ioIterationResult = ioIterationTask givenState
-          hueIterationStateResult (hueIterationToResult ioIterationResult) `shouldBe` State 42 "The answer"
+          iterationStateResult (iterationToResult ioIterationResult) `shouldBe` State 42 "The answer"
       describe "Given many IO operations" $ do
-        let iterationResult = performUpdate $ \_ currentState _ -> do
-              huePerformTask ioOperation1 $ \_ (number, text) -> do
+        let iteration = performUpdate $ \_ currentState _ -> do
+              process ioOperation1 $ \_ (number, text) ->
                 return $ State number text
               _ <- return "any thing that between the tasks"
-              huePerformTask ioOperation2 $ \_ text -> do
+              process ioOperation2 $ \_ text ->
                 return $ State (-1) text
-              return $ currentState
+              return currentState
         it "Should register the given tasks" $ do
-          task1 <- (hueIterationTasksResult iterationResult) !! 0
-          task2 <- (hueIterationTasksResult iterationResult) !! 1
+          task1 <- head (iterationTasksResult iteration)
+          task2 <- iterationTasksResult iteration !! 1
           let ioIterationResult1 = task1 givenState
-          hueIterationStateResult (hueIterationToResult ioIterationResult1) `shouldBe` State 42 "The answer"
+          iterationStateResult (iterationToResult ioIterationResult1) `shouldBe` State 42 "The answer"
           let ioIterationResult2 = task2 givenState
-          hueIterationStateResult (hueIterationToResult ioIterationResult2) `shouldBe` State (-1) "Tell me why I don't like Mondays."
+          iterationStateResult (iterationToResult ioIterationResult2) `shouldBe` State (-1) "Tell me why I don't like Mondays."
       describe "When I call a task providing an state" $ do
         let ioOperation = return "The answer"
-        let iterationResult = performUpdate $ \_ currentState _ -> do
-              huePerformTask ioOperation $ \newCurrentState _ -> do
+        let iteration = performUpdate $ \_ currentState _ -> do
+              process ioOperation $ \newCurrentState _ ->
                 return newCurrentState
-              return $ currentState
+              return currentState
         it "should receive the given state" $ do
-          let task = head $ hueIterationTasksResult iterationResult
+          let task = head $ iterationTasksResult iteration
           ioIterationTask <- task
           let ioIterationResult = ioIterationTask $ State 1 "My given state"
-          hueIterationStateResult (hueIterationToResult ioIterationResult) `shouldBe` State 1 "My given state"
-    describe "Responding to the context" $ do
+          iterationStateResult (iterationToResult ioIterationResult) `shouldBe` State 1 "My given state"
+    describe "Responding to the context" $
       describe "When I perform the respond operation to the given context" $ do
-        let iterationResult = performUpdate $ \resolver _ _ -> do
+        let iteration = performUpdate $ \resolver _ _ -> do
               resolver "Pong"
               return $ State 42 "OK"
         it "should register the context response" $ do
-          let response = head (hueIterationResponsesResult iterationResult)
+          let response = head (iterationResponsesResult iteration)
           fst response `shouldBe` givenContext
           snd response `shouldBe` "Pong"
-    describe "Performing many operations" $ do
+    describe "Performing many operations" $
       describe "When I perform many and different operations" $ do
-        let iterationResult = performUpdate $ \resolver _ _ -> do
-              huePerformTask ioOperation1 $ \_ (number, text) -> do
+        let iteration = performUpdate $ \resolver _ _ -> do
+              process ioOperation1 $ \_ (number, text) ->
                 return $ State number text
               _ <- return "any thing that between the tasks"
               resolver "OK"
-              huePerformTask ioOperation2 $ \_ text -> do
+              process ioOperation2 $ \_ text ->
                 return $ State (-1) text
               return $ State 31 "All done"
         it "Should register all tasks and responses correctly" $ do
-          length (hueIterationTasksResult iterationResult) `shouldBe` 2
-          length (hueIterationResponsesResult iterationResult) `shouldBe` 1
-          hueIterationStateResult iterationResult `shouldBe` State 31 "All done"
-    describe "Using the HueIteration as a Applicative" $ do
+          length (iterationTasksResult iteration) `shouldBe` 2
+          length (iterationResponsesResult iteration) `shouldBe` 1
+          iterationStateResult iteration `shouldBe` State 31 "All done"
+    describe "Using the HueIteration as a Applicative" $
       describe "When I do a sequence application" $ do
         describe "And it's a identity application" $ do
-          let (HueIteration iterationData result) =
-                pure id <*> HueIteration (HueIterationData [] []) "Hi"
+          let (Iteration currentData result) =
+                pure id <*> Iteration (IterationData [] []) "Hi"
 
           it "should return the same result and the data constructor should be HueIteration" $ do
             result `shouldBe` "Hi"
-            length (hueIterationTasks iterationData) `shouldBe` 0
+            length (iterationTasks currentData) `shouldBe` 0
         describe "And both has iteration tasks" $ do
           let functionIteration = do
-                huePerformTask ioOperation1 $ \state _ -> return state
-                huePerformTask ioOperation1 $ \state _ -> return state
+                process ioOperation1 $ \state _ -> return state
+                process ioOperation1 $ \state _ -> return state
                 return id
           let anotherIteration = do
-                huePerformTask ioOperation1 $ \state _ -> return state
-                huePerformTask ioOperation1 $ \state _ -> return state
+                process ioOperation1 $ \state _ -> return state
+                process ioOperation1 $ \state _ -> return state
                 return $ State 42 "All fine"
-          let (HueIteration iterationData result) = functionIteration <*> anotherIteration
+          let (Iteration currentData result) = functionIteration <*> anotherIteration
 
           it "should return the same result with both iteration data" $ do
-            result `shouldBe` (State 42 "All fine")
-            length (hueIterationTasks iterationData) `shouldBe` 4
+            result `shouldBe` State 42 "All fine"
+            length (iterationTasks currentData) `shouldBe` 4
