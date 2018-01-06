@@ -56,29 +56,13 @@ type IterationTask state response = IO (state -> StateIteration state response)
 -- `Iteration`.
 type IterationResponse response = (Context, response)
 
--- |The `IterationData` contains information that should be passed for each monad
--- binding.
-data IterationData state response = IterationData
-            { iterationTasks :: [IterationTask state response]
-            , iterationResponses :: [IterationResponse response]
-            }
-
--- |This function receive two `IterationData` and create a new joining their data.
-joinIterationData :: IterationData state response -> IterationData state response -> IterationData state response
-joinIterationData iterationA iterationB = IterationData tasks responses
-  where
-    tasks = iterationTasks iterationA ++ iterationTasks iterationB
-    responses = iterationResponses iterationA ++ iterationResponses iterationB
-
 -- |`Iteration` is a type that orchestrates the state and the response is commonly used
 -- as `StateIteration`.
 -- It is a polyphoric type that has the `state`, `response` and `result` as flexible types.
 data Iteration state response result
   -- |Iteration has a `IterationData` and a result (commonly defined as `()`) when `>>=`
   -- to another `Iteration` a new `Iteration` is created with a join of their `IterationData`.
-  = Iteration { iterationData :: IterationData state response
-              , iterationResult :: result
-              }
+  = Iteration [IterationTask state response] [IterationResponse response] result
   | FinishedIteration [IterationResponse response] state
 
 -- |Register an `IO` operation to performed. It receives the `IO` operation and a callback function that
@@ -107,12 +91,11 @@ process
   -> (state -> result -> StateIteration state response)
   -> Iteration state response ()
 process ioOperation callback =
-  Iteration newIterationData ()
+  Iteration [task] [] ()
   where
     task = do
       result <- ioOperation
       return $ \state -> callback state result
-    newIterationData = IterationData [task] []
 
 
 -- | A version of process without callback, that is, it ignore the result of the `IO` operation
@@ -123,7 +106,7 @@ process_ ioOperation = process ioOperation $ \state _ -> return state
 -- |This function is used to generate a `Resolver` given a `Context`.
 respond :: Context -> Resolver state response
 respond context response =
-  Iteration (IterationData [] [(context, response)]) ()
+  Iteration [] [(context, response)] ()
 
 -- |This function is used to ignore any IO operations and context resolver
 --
@@ -140,14 +123,13 @@ instance Functor (Iteration state response) where
     return (f result)
 
 instance Applicative (Iteration state response) where
-  pure = Iteration (IterationData [] [])
-  Iteration givenIterationData functionResult <*> iteration = joinedIteration
+  pure = Iteration [] []
+  Iteration givenTasks givenResponses functionResult <*> iteration = joinedIteration
     where
-      newIteration = fmap functionResult iteration
-      newIterationData = iterationData newIteration
-      newIterationResult = iterationResult newIteration
-      joinedIterationData = joinIterationData givenIterationData newIterationData
-      joinedIteration = Iteration joinedIterationData newIterationResult
+      (Iteration newTasks newResponses newIterationResult) = fmap functionResult iteration
+      joinedTasks = givenTasks ++ newTasks
+      joinedResponses = givenResponses ++ newResponses
+      joinedIteration = Iteration joinedTasks joinedResponses newIterationResult
 
 
 -- |The main role of the `Iteration` monad is to keep the `IterationData` at each
@@ -158,12 +140,15 @@ instance Applicative (Iteration state response) where
 -- using the `process`, resolve many requests using the `Resolver` and return a
 -- new state using the `return` function.
 instance Monad (Iteration state response) where
-  Iteration currentIterationData result >>= f =
+  Iteration givenTasks givenResponses result >>= f =
     case f result of
-      (Iteration newIterationData newResult) ->
-        Iteration (joinIterationData currentIterationData newIterationData) newResult
-      (FinishedIteration responses state) ->
-        FinishedIteration (iterationResponses currentIterationData ++ responses) state
+      (Iteration newTasks newResponses newResult) ->
+        Iteration joinedTasks joinedResponses newResult
+        where
+          joinedTasks = givenTasks ++ newTasks
+          joinedResponses = givenResponses ++ newResponses
+      (FinishedIteration newResponses state) ->
+        FinishedIteration (givenResponses ++ newResponses) state
   FinishedIteration responses state >>= _ = FinishedIteration responses state
 
 
@@ -177,8 +162,8 @@ data IterationResult state response =
 
 -- |Convert a given `StateIteration` in a `IterationResult`
 iterationToResult :: StateIteration state response -> IterationResult state response
-iterationToResult (Iteration currentIterationData state) =
-  IterationResult state (iterationTasks currentIterationData) (iterationResponses currentIterationData)
+iterationToResult (Iteration tasks responses state) =
+  IterationResult state tasks responses
 iterationToResult (FinishedIteration responses state) =
   IterationResult state [] responses
 

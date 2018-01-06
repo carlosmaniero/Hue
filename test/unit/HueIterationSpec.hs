@@ -115,12 +115,12 @@ hueIterationSpec =
     describe "Using the HueIteration as a Applicative" $
       describe "When I do a sequence application" $ do
         describe "And it's a identity application" $ do
-          let (Iteration currentData result) =
-                pure id <*> Iteration (IterationData [] []) "Hi"
+          let (Iteration tasks _ result) =
+                pure id <*> Iteration [] [] "Hi"
 
           it "should return the same result and the data constructor should be HueIteration" $ do
             result `shouldBe` "Hi"
-            length (iterationTasks currentData) `shouldBe` 0
+            length tasks `shouldBe` 0
         describe "And both has iteration tasks" $ do
           let functionIteration = do
                 process ioOperation1 $ \state _ -> return state
@@ -130,11 +130,11 @@ hueIterationSpec =
                 process ioOperation1 $ \state _ -> return state
                 process ioOperation1 $ \state _ -> return state
                 return $ State 42 "All fine"
-          let (Iteration currentData result) = functionIteration <*> anotherIteration
+          let (Iteration tasks _ result) = functionIteration <*> anotherIteration
 
           it "should return the same result with both iteration data" $ do
             result `shouldBe` State 42 "All fine"
-            length (iterationTasks currentData) `shouldBe` 4
+            length tasks `shouldBe` 4
     describe "Finishing an iteration" $
       describe "When I finish an iteration" $ do
         describe "And perform any io iteration" $ do

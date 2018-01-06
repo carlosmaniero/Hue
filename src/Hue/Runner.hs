@@ -63,7 +63,7 @@ startTask channel ioTask = forkIO $ do
 -- it started.
 data Runner state = Runner { stop :: IO ()
                            , wait :: IO (RunnerResult state) }
-  
+
 nextRunIteration
   :: state
   -> IterationRunnerChannel state response
@@ -83,13 +83,11 @@ run tasksRunning channel state = do
   result <- takeMVar channel
   case result of
     (StartTask task) -> do
-      let (Iteration newData newState) = task state
-      let tasks = iterationTasks newData
+      let (Iteration tasks _ newState) = task state
       newTasksId <- mapM (startTask channel) tasks
       nextRunIteration newState channel (tasksRunning ++ newTasksId)
     (NewIteration threadId task) -> do
-      let (Iteration newData newState) = task state
-      let tasks = iterationTasks newData
+      let (Iteration tasks _ newState) = task state
       newTasksId <- mapM (startTask channel) tasks
       let newTasksRunning = filter (/= threadId) (tasksRunning ++ newTasksId)
       nextRunIteration newState channel newTasksRunning
