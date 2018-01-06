@@ -115,7 +115,6 @@ respond context response =
 finish :: state -> Iteration state response state
 finish = FinishedIteration []
 
-
 -- |The `fmap` function follows the monad `>>=` behavior.
 instance Functor (Iteration state response) where
   fmap f operation = do
@@ -124,13 +123,16 @@ instance Functor (Iteration state response) where
 
 instance Applicative (Iteration state response) where
   pure = Iteration [] []
-  Iteration givenTasks givenResponses functionResult <*> iteration = joinedIteration
-    where
-      (Iteration newTasks newResponses newIterationResult) = fmap functionResult iteration
-      joinedTasks = givenTasks ++ newTasks
-      joinedResponses = givenResponses ++ newResponses
-      joinedIteration = Iteration joinedTasks joinedResponses newIterationResult
-
+  Iteration givenTasks givenResponses functionResult <*> iteration =
+    case fmap functionResult iteration of
+      (Iteration newTasks newResponses newIterationResult) ->
+        Iteration joinedTasks joinedResponses newIterationResult
+        where
+          joinedTasks = givenTasks ++ newTasks
+          joinedResponses = givenResponses ++ newResponses
+      (FinishedIteration newResponses newState) ->
+        FinishedIteration (givenResponses ++ newResponses) newState
+  FinishedIteration responses state <*> _ = FinishedIteration responses state
 
 -- |The main role of the `Iteration` monad is to keep the `IterationData` at each
 -- bind (`>>=`).

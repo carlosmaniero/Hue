@@ -125,16 +125,45 @@ hueIterationSpec =
           let functionIteration = do
                 process ioOperation1 $ \state _ -> return state
                 process ioOperation1 $ \state _ -> return state
+                respond givenContext "Hi!"
                 return id
           let anotherIteration = do
                 process ioOperation1 $ \state _ -> return state
                 process ioOperation1 $ \state _ -> return state
+                respond (Context 3) "bye"
                 return $ State 42 "All fine"
-          let (Iteration tasks _ result) = functionIteration <*> anotherIteration
+          let (Iteration tasks responses result) = functionIteration <*> anotherIteration
 
           it "should return the same result with both iteration data" $ do
             result `shouldBe` State 42 "All fine"
             length tasks `shouldBe` 4
+            length responses `shouldBe` 2
+        describe "Add a iteration with tasks and a finished iteration" $ do
+          let functionIteration = do
+                process ioOperation1 $ \state _ -> return state
+                process ioOperation1 $ \state _ -> return state
+                respond givenContext "Hi!"
+                return $ \result -> result ++ " that's wrong"
+
+          it "should return a finished iteration with the finished state" $ do
+            let (FinishedIteration responses state) =
+                  functionIteration <*> FinishedIteration [(Context 2, "bye")] "That's right!"
+            state `shouldBe` "That's right!"
+            length responses `shouldBe` 2
+        describe "Add a finished iteration to another iteration" $ do
+          let anotherIteration = do
+                process ioOperation1 $ \state _ -> return state
+                process ioOperation1 $ \state _ -> return state
+                respond (Context 2) "bye"
+                respond (Context 3) "bye"
+                return $ State (-1) "Error"
+
+          let FinishedIteration responses state =
+                FinishedIteration [(givenContext, "Hi")] (State 42 "OK") <*> anotherIteration
+
+          it "should return the finished data and ignore the another iteration" $ do
+            length responses `shouldBe` 1
+            state `shouldBe` State 42 "OK"
     describe "Finishing an iteration" $
       describe "When I finish an iteration" $ do
         describe "And perform any io iteration" $ do
