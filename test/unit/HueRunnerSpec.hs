@@ -7,7 +7,7 @@ import Control.Concurrent
 import Test.Hspec
 
 
-expect42 :: Runner Int -> RunnerFinishedStatus -> IO ()
+expect42 :: Runner Int Int -> RunnerFinishedStatus -> IO ()
 expect42 runner status = do
   (result, resultStatus) <- wait runner
   result `shouldBe` 42
@@ -17,6 +17,11 @@ expect42 runner status = do
 sumStateIteration :: Int -> Int -> StateIteration Int Int
 sumStateIteration state result = return (state + result)
 
+startIteration :: TaskIteration state response -> state -> IO (Runner state response)
+startIteration task state = do
+  runner <- startRunner state
+  schedule runner task
+  return runner
 
 hueRunnerSpec :: SpecWith ()
 hueRunnerSpec =
@@ -74,3 +79,8 @@ hueRunnerSpec =
               return state
         runner <- startIteration task (41 :: Int)
         expect42 runner Finished
+    describe "When I perform an infinite runner" $
+      it "should raise an exception if it has nobody to send new messages" $ do
+        runner <- startForeverRunner (42 :: Int)
+        schedule runner return
+        wait runner `shouldThrow` anyException

@@ -62,71 +62,79 @@ startTask channel ioTask = forkIO $ do
         putMVar channel (TaskIterationDead threadId e)
     return ()
 
-
 -- | It is the runner representation. Thought this you can stop
 -- the execution using the `stop` and wait for the result state using
 -- the `wait`.
 --
 -- Note: When the `stop` is called `run` will kill all threads that
 -- it started.
-data Runner state = Runner { stop :: IO ()
-                           , wait :: IO (RunnerResult state) }
+data Runner state response = Runner { stop :: IO ()
+                                    , schedule :: TaskIteration state response -> IO ()
+                                    , wait :: IO (RunnerResult state) }
 
 nextRunIteration
-  :: state
+  :: Bool
+  -> state
   -> IterationRunnerChannel state response
   -> [ThreadId]
   -> IO (RunnerResult state)
-nextRunIteration newState channel tasksRunning = do
+nextRunIteration runForever newState channel tasksRunning = do
   let newTasksRunning = tasksRunning
-  if null newTasksRunning then
+  if null newTasksRunning && not runForever then
     return (newState, Completed)
-  else run newTasksRunning channel newState
+  else run runForever newTasksRunning channel newState
 
 
 processIteration
-  ::[ThreadId]
+  :: Bool
+  -> [ThreadId]
   -> IterationRunnerChannel state response
   -> StateIteration state response
   -> IO (RunnerResult state)
-processIteration tasksRunning channel iteration =
+processIteration runForever tasksRunning channel iteration =
   case iteration of
     Iteration tasks _ newState -> do
       newTasksId <- mapM (startTask channel) tasks
-      nextRunIteration newState channel (tasksRunning ++ newTasksId)
+      nextRunIteration runForever newState channel (tasksRunning ++ newTasksId)
     FinishedIteration _ newState ->
       return (newState, Finished)
 
 
 -- | The main loop that control the execution of of the `TaskIteration`.
 -- It will perform the given task all its nested tasks and return an updated result.
-run :: [ThreadId] -> IterationRunnerChannel state response -> state -> IO (RunnerResult state)
-run tasksRunning channel state = do
+run :: Bool -> [ThreadId] -> IterationRunnerChannel state response -> state -> IO (RunnerResult state)
+run runForever tasksRunning channel state = do
   result <- takeMVar channel
   case result of
     (StartTask task) ->
-      processIteration tasksRunning channel (task state)
+      processIteration runForever tasksRunning channel (task state)
     (NewIteration originThreadId task) ->
-      processIteration newTasksRunning channel (task state)
+      processIteration runForever newTasksRunning channel (task state)
           where newTasksRunning = filter (/= originThreadId) tasksRunning
     (TaskIterationDead threadId _) -> do
       let newTasksRunning = filter (/= threadId) tasksRunning
-      nextRunIteration state channel newTasksRunning
+      nextRunIteration runForever state channel newTasksRunning
     StopRunner -> do
       mapM_ killThread tasksRunning
       return (state, Stopped)
 
 
--- | Start the iteration and return a `Runner` where is possible to control the
--- execution and get its result.
-startIteration :: (TaskIteration state response) -> state -> IO (Runner state)
-startIteration task state = do
-  channel <- newMVar (StartTask task)
+startRunner' :: Bool -> state -> IO (Runner state response)
+startRunner' runForever initialState = do
+  channel <- newEmptyMVar
   channelState <- newEmptyMVar
   _ <- forkIO $ do
-    result <- run [] channel state
+    result <- run runForever [] channel initialState
     putMVar channelState result
 
   return (Runner
            (putMVar channel StopRunner)
+           (putMVar channel . StartTask)
            (readMVar channelState))
+
+
+startRunner :: state -> IO (Runner state response)
+startRunner = startRunner' False
+
+startForeverRunner :: state -> IO (Runner state response)
+startForeverRunner = startRunner' True
