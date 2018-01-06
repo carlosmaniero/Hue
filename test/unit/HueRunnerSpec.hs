@@ -7,10 +7,11 @@ import Control.Concurrent
 import Test.Hspec
 
 
-expect42 :: Runner Int -> IO ()
-expect42 runner = do
-  (Finished result) <- wait runner
+expect42 :: Runner Int -> RunnerFinishedStatus -> IO ()
+expect42 runner status = do
+  (result, resultStatus) <- wait runner
   result `shouldBe` 42
+  resultStatus `shouldBe` status
 
 
 sumStateIteration :: Int -> Int -> StateIteration Int Int
@@ -27,7 +28,7 @@ hueRunnerSpec =
               process (return 2) sumStateIteration
               return state
         runner <- startIteration task (39 :: Int)
-        expect42 runner
+        expect42 runner Completed
     describe "When nested task are performed" $
       it "should complete all nested tasks before return" $ do
         let task state = do
@@ -37,7 +38,7 @@ hueRunnerSpec =
                 return (stateNew + response)
               return state
         runner <- startIteration task (36 :: Int)
-        expect42 runner
+        expect42 runner Completed
     describe "When a task fail" $
       it "should be completed with the status no more tasks and the last updated result" $ do
         let task state = do
@@ -46,7 +47,7 @@ hueRunnerSpec =
               process (return 2) sumStateIteration
               return state
         runner <- startIteration task (39 :: Int)
-        expect42 runner
+        expect42 runner Completed
 
     describe "When I stop the runner" $
       it "should stop the running and return the last updated status" $ do
@@ -55,8 +56,7 @@ hueRunnerSpec =
               return state
         runner <- startIteration task (42 :: Int)
         stop runner
-        (Stopped result) <- wait runner
-        result `shouldBe` 42
+        expect42 runner Stopped
 
     describe "When a task is finished by the finished status" $
       it "should ignore the execution of tasks and return the finish state" $ do
@@ -65,7 +65,7 @@ hueRunnerSpec =
               _ <- finish 42
               return state
         runner <- startIteration task (1 :: Int)
-        expect42 runner
+        expect42 runner Finished
     describe "When I perform the finish in a subprocess it should return the result of the finish" $
       it "should return the result of the finish" $ do
         let task state = do
@@ -73,4 +73,4 @@ hueRunnerSpec =
               process (threadDelay 10000 >>= \_ -> return 2) $ \newState response -> finish (newState + response)
               return state
         runner <- startIteration task (41 :: Int)
-        expect42 runner
+        expect42 runner Finished

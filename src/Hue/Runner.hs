@@ -30,12 +30,20 @@ data IterationRunnerMsgs state response
   | StopRunner
 
 
--- | The result of the `run` loop. Each result return the last updated state.
-data RunnerResult state
+-- | The finished state of the `run` loop.
+data RunnerFinishedStatus
   -- | Yes! all tasks were performed and this is the final state
-  = Finished state
+  = Completed
+  -- | An operation finished the execution by the `finish` calling
+  | Finished
   -- | You stopped the loop and this is the last version of the state
-  | Stopped state
+  | Stopped
+  deriving (Eq, Show)
+
+
+-- | The runner response contains the last updated state and why the
+-- runner finished its operation
+type RunnerResult state = (state, RunnerFinishedStatus)
 
 
 -- | It starts a `IterationTask` in a new thread and respond for the `run`
@@ -72,7 +80,7 @@ nextRunIteration
 nextRunIteration newState channel tasksRunning = do
   let newTasksRunning = tasksRunning
   if null newTasksRunning then
-    return (Finished newState)
+    return (newState, Completed)
   else run newTasksRunning channel newState
 
 
@@ -87,7 +95,7 @@ processIteration tasksRunning channel iteration =
       newTasksId <- mapM (startTask channel) tasks
       nextRunIteration newState channel (tasksRunning ++ newTasksId)
     FinishedIteration _ newState ->
-      return (Finished newState)
+      return (newState, Finished)
 
 
 -- | The main loop that control the execution of of the `TaskIteration`.
@@ -106,7 +114,7 @@ run tasksRunning channel state = do
       nextRunIteration state channel newTasksRunning
     StopRunner -> do
       mapM_ killThread tasksRunning
-      return (Stopped state)
+      return (state, Stopped)
 
 
 -- | Start the iteration and return a `Runner` where is possible to control the
