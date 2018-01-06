@@ -3,6 +3,7 @@ module HueRunnerSpec where
 import Hue.Iteration
 import Hue.Runner
 import Control.Exception
+import Control.Concurrent
 import Test.Hspec
 
 
@@ -56,3 +57,20 @@ hueRunnerSpec =
         stop runner
         (Stopped result) <- wait runner
         result `shouldBe` 42
+
+    describe "When a task is finished by the finished status" $
+      it "should ignore the execution of tasks and return the finish state" $ do
+        let task state = do
+              process (return 1) sumStateIteration
+              _ <- finish 42
+              return state
+        runner <- startIteration task (1 :: Int)
+        expect42 runner
+    describe "When I perform the finish in a subprocess it should return the result of the finish" $
+      it "should return the result of the finish" $ do
+        let task state = do
+              process (return 1) $ \newState response -> finish (newState + response)
+              process (threadDelay 10000 >>= \_ -> return 2) $ \newState response -> finish (newState + response)
+              return state
+        runner <- startIteration task (41 :: Int)
+        expect42 runner

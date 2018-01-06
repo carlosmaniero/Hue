@@ -76,21 +76,31 @@ nextRunIteration newState channel tasksRunning = do
   else run newTasksRunning channel newState
 
 
+processIteration
+  ::[ThreadId]
+  -> IterationRunnerChannel state response
+  -> StateIteration state response
+  -> IO (RunnerResult state)
+processIteration tasksRunning channel iteration =
+  case iteration of
+    Iteration tasks _ newState -> do
+      newTasksId <- mapM (startTask channel) tasks
+      nextRunIteration newState channel (tasksRunning ++ newTasksId)
+    FinishedIteration _ newState ->
+      return (Finished newState)
+
+
 -- | The main loop that control the execution of of the `TaskIteration`.
 -- It will perform the given task all its nested tasks and return an updated result.
 run :: [ThreadId] -> IterationRunnerChannel state response -> state -> IO (RunnerResult state)
 run tasksRunning channel state = do
   result <- takeMVar channel
   case result of
-    (StartTask task) -> do
-      let (Iteration tasks _ newState) = task state
-      newTasksId <- mapM (startTask channel) tasks
-      nextRunIteration newState channel (tasksRunning ++ newTasksId)
-    (NewIteration threadId task) -> do
-      let (Iteration tasks _ newState) = task state
-      newTasksId <- mapM (startTask channel) tasks
-      let newTasksRunning = filter (/= threadId) (tasksRunning ++ newTasksId)
-      nextRunIteration newState channel newTasksRunning
+    (StartTask task) ->
+      processIteration tasksRunning channel (task state)
+    (NewIteration originThreadId task) ->
+      processIteration newTasksRunning channel (task state)
+          where newTasksRunning = filter (/= originThreadId) tasksRunning
     (TaskIterationDead threadId _) -> do
       let newTasksRunning = filter (/= threadId) tasksRunning
       nextRunIteration state channel newTasksRunning
@@ -112,4 +122,3 @@ startIteration task state = do
   return (Runner
            (putMVar channel StopRunner)
            (readMVar channelState))
-
