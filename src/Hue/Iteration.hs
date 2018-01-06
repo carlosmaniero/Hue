@@ -79,6 +79,7 @@ data Iteration state response result
   = Iteration { iterationData :: IterationData state response
               , iterationResult :: result
               }
+  | FinishedIteration [IterationResponse response] state
 
 -- |Register an `IO` operation to performed. It receives the `IO` operation and a callback function that
 -- returns a `StateIteration`.
@@ -124,6 +125,14 @@ respond :: Context -> Resolver state response
 respond context response =
   Iteration (IterationData [] [(context, response)]) ()
 
+-- |This function is used to ignore any IO operations and context resolver
+--
+-- It's like an return of an imperative language that interrupt the execution. So, any bind (`>>=`)
+-- performed after this will be ignored
+finish :: state -> Iteration state response state
+finish = FinishedIteration []
+
+
 -- |The `fmap` function follows the monad `>>=` behavior.
 instance Functor (Iteration state response) where
   fmap f operation = do
@@ -138,7 +147,7 @@ instance Applicative (Iteration state response) where
       newIterationData = iterationData newIteration
       newIterationResult = iterationResult newIteration
       joinedIterationData = joinIterationData givenIterationData newIterationData
-      joinedIteration= Iteration joinedIterationData newIterationResult
+      joinedIteration = Iteration joinedIterationData newIterationResult
 
 
 -- |The main role of the `Iteration` monad is to keep the `IterationData` at each
@@ -150,8 +159,12 @@ instance Applicative (Iteration state response) where
 -- new state using the `return` function.
 instance Monad (Iteration state response) where
   Iteration currentIterationData result >>= f =
-    Iteration (joinIterationData currentIterationData newIterationData) newResult
-      where (Iteration newIterationData newResult) = f result
+    case f result of
+      (Iteration newIterationData newResult) ->
+        Iteration (joinIterationData currentIterationData newIterationData) newResult
+      (FinishedIteration responses state) ->
+        FinishedIteration (iterationResponses currentIterationData ++ responses) state
+  FinishedIteration responses state >>= _ = FinishedIteration responses state
 
 
 -- |This is the result representation of an `StateIteration`. It contains basically the same
@@ -166,6 +179,8 @@ data IterationResult state response =
 iterationToResult :: StateIteration state response -> IterationResult state response
 iterationToResult (Iteration currentIterationData state) =
   IterationResult state (iterationTasks currentIterationData) (iterationResponses currentIterationData)
+iterationToResult (FinishedIteration responses state) =
+  IterationResult state [] responses
 
 -- |The `performIteration` is used to call the `IterationUpdater` with the correct data.
 -- It is a useful function to make your unit tests. You can see some examples in the

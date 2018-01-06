@@ -135,3 +135,33 @@ hueIterationSpec =
           it "should return the same result with both iteration data" $ do
             result `shouldBe` State 42 "All fine"
             length (iterationTasks currentData) `shouldBe` 4
+    describe "Finishing an iteration" $
+      describe "When I finish an iteration" $ do
+        describe "And perform any io iteration" $ do
+          let iteration = performUpdate $ \ _ _ _ -> do
+                process ioOperation1 $ \state _ -> return state
+                _ <- finish $ State 42 "Nice!"
+                process ioOperation1 $ \state _ -> return state
+                return $ State 20 "Not nice!"
+          it "should ignore the IO operations and assume the given state" $ do
+            length (iterationTasksResult iteration) `shouldBe` 0
+            iterationStateResult iteration `shouldBe` State 42 "Nice!"
+        describe "And call a resolver" $ do
+          describe "And the resolver was called before the finish" $ do
+            let iteration = performUpdate $ \ resolver _ _ -> do
+                  resolver "Pong"
+                  finish $ State 42 "Nice!"
+
+            it "Should contain the context resolved" $ do
+              let response = head (iterationResponsesResult iteration)
+              fst response `shouldBe` givenContext
+              snd response `shouldBe` "Pong"
+          describe "And the resolver was called after the finish" $ do
+            let iteration = performUpdate $ \ resolver _ _ -> do
+                  _ <- finish $ State 42 "Nice!"
+                  resolver "Pong"
+                  return $ State 1 "Ignored"
+
+            it "Should contain the context resolved" $ do
+              let responses = iterationResponsesResult iteration
+              length responses `shouldBe` 0
