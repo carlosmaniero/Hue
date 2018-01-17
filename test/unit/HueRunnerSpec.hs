@@ -7,17 +7,17 @@ import Control.Concurrent
 import Test.Hspec
 
 
-expect42 :: Runner Int Int -> RunnerFinishedStatus -> IO ()
+expect42 :: Runner  Int -> RunnerFinishedStatus -> IO ()
 expect42 runner status = do
   (result, resultStatus) <- wait runner
   result `shouldBe` 42
   resultStatus `shouldBe` status
 
 
-sumStateIteration :: Int -> Int -> StateIteration Int Int
+sumStateIteration :: Int -> Int -> StateIteration Int
 sumStateIteration state result = return (state + result)
 
-startIteration :: TaskIteration state response -> state -> IO (Runner state response)
+startIteration :: TaskIteration state -> state -> IO (Runner state)
 startIteration task state = do
   runner <- startRunner state
   schedule runner task

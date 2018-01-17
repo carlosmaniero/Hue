@@ -11,19 +11,19 @@ import Control.Exception
 -- a state as argument and return a new state iteration.
 --
 -- This mechanism is created by the `huePerformTask`.
-type TaskIteration state response = state -> StateIteration state response
+type TaskIteration state = state -> StateIteration state
 
 -- | This is the channel that tasks uses to communicate with its caller loop (`rueRunner`).
-type IterationRunnerChannel state response = MVar (IterationRunnerMsgs state response)
+type IterationRunnerChannel state = MVar (IterationRunnerMsgs state)
 
 -- | It contain the internal messages that tasks uses to communicate with
 -- its caller loop (`runner`).
-data IterationRunnerMsgs state response
+data IterationRunnerMsgs state
   -- | Used to start a new task.
-  = StartTask (TaskIteration state response)
+  = StartTask (TaskIteration state)
   -- | Used when the IO operation was successfully performed and a `StateIteration`
   -- is waiting for processing.
-  | NewIteration ThreadId (TaskIteration state response)
+  | NewIteration ThreadId (TaskIteration state)
   -- | Used when for some reason the IO operation is died.
   | TaskIterationDead ThreadId SomeException
   -- | Used by the `hueStop` to stop the loop execution.
@@ -49,8 +49,8 @@ type RunnerResult state = (state, RunnerFinishedStatus)
 -- | It starts a `IterationTask` in a new thread and respond for the `run`
 -- the result through the given channel.
 startTask
-  :: IterationRunnerChannel state response
-  -> IterationTask state response
+  :: IterationRunnerChannel state
+  -> IterationTask state
   -> IO ThreadId
 startTask channel ioTask = forkIO $ do
     taskResult <- try ioTask
@@ -68,14 +68,14 @@ startTask channel ioTask = forkIO $ do
 --
 -- Note: When the `stop` is called `run` will kill all threads that
 -- it started.
-data Runner state response = Runner { stop :: IO ()
-                                    , schedule :: TaskIteration state response -> IO ()
-                                    , wait :: IO (RunnerResult state) }
+data Runner state  = Runner { stop :: IO ()
+                            , schedule :: TaskIteration state  -> IO ()
+                            , wait :: IO (RunnerResult state) }
 
 nextRunIteration
   :: Bool
   -> state
-  -> IterationRunnerChannel state response
+  -> IterationRunnerChannel state
   -> [ThreadId]
   -> IO (RunnerResult state)
 nextRunIteration runForever newState channel tasksRunning = do
@@ -88,21 +88,21 @@ nextRunIteration runForever newState channel tasksRunning = do
 processIteration
   :: Bool
   -> [ThreadId]
-  -> IterationRunnerChannel state response
-  -> StateIteration state response
+  -> IterationRunnerChannel state
+  -> StateIteration state
   -> IO (RunnerResult state)
 processIteration runForever tasksRunning channel iteration =
   case iteration of
-    Iteration tasks _ newState -> do
+    Iteration tasks newState -> do
       newTasksId <- mapM (startTask channel) tasks
       nextRunIteration runForever newState channel (tasksRunning ++ newTasksId)
-    FinishedIteration _ newState ->
+    FinishedIteration newState ->
       return (newState, Finished)
 
 
 -- | The main loop that control the execution of of the `TaskIteration`.
 -- It will perform the given task all its nested tasks and return an updated result.
-run :: Bool -> [ThreadId] -> IterationRunnerChannel state response -> state -> IO (RunnerResult state)
+run :: Bool -> [ThreadId] -> IterationRunnerChannel state -> state -> IO (RunnerResult state)
 run runForever tasksRunning channel state = do
   result <- takeMVar channel
   case result of
@@ -119,7 +119,7 @@ run runForever tasksRunning channel state = do
       return (state, Stopped)
 
 
-startRunner' :: Bool -> state -> IO (Runner state response)
+startRunner' :: Bool -> state -> IO (Runner state)
 startRunner' runForever initialState = do
   channel <- newEmptyMVar
   channelState <- newEmptyMVar
@@ -133,8 +133,8 @@ startRunner' runForever initialState = do
            (readMVar channelState))
 
 
-startRunner :: state -> IO (Runner state response)
+startRunner :: state -> IO (Runner state)
 startRunner = startRunner' False
 
-startForeverRunner :: state -> IO (Runner state response)
+startForeverRunner :: state -> IO (Runner state)
 startForeverRunner = startRunner' True
